@@ -1,0 +1,98 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account for a citizen or resolver",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "password": { "type": "string" },
+        "role": { "type": "string", "enum": ["citizen", "resolver"] },
+        "points": { "type": "integer" },
+        "badges": { "type": "array" },
+        "reportsCount": { "type": "integer" },
+        "verificationsCount": { "type": "integer" },
+        "resolvedReportsCount": { "type": "integer" },
+        "resolverIssuesResolved": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "password", "role"]
+    },
+    "Issue": {
+      "title": "Issue",
+      "description": "A community issue reported by a citizen",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "location": { "type": "object" },
+        "issueType": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "description": { "type": "string" },
+        "priority": { "type": "string", "enum": ["Low", "Medium", "High"] },
+        "status": { "type": "string", "enum": ["Reported", "Verified", "In Progress", "Resolved"] },
+        "statusHistory": { "type": "array" },
+        "mediaUrls": { "type": "array" },
+        "mediaUrl": { "type": "string" },
+        "reporterId": { "type": "string" },
+        "confirmations": { "type": "integer" },
+        "confirmedBy": { "type": "array" },
+        "commentsList": { "type": "array" },
+        "comments": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["description", "issueType", "priority", "address", "createdAt", "status"]
+    },
+    "CachedInsights": {
+      "title": "CachedInsights",
+      "description": "Cached AI insights for citywide issues",
+      "type": "object",
+      "properties": {
+        "insights": {
+          "type": "object",
+          "properties": {
+            "summary": { "type": "string" },
+            "bullets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "text": { "type": "string" },
+                  "severity": { "type": "string" },
+                  "category": { "type": "string" }
+                },
+                "required": ["text", "severity", "category"]
+              }
+            }
+          },
+          "required": ["summary", "bullets"]
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["insights", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection"
+    },
+    "/issues/{issueId}": {
+      "schema": "Issue",
+      "description": "Civic issues reported by community members"
+    },
+    "/cached_insights/{insightId}": {
+      "schema": "CachedInsights",
+      "description": "Cached citywide AI-powered civic insights"
+    }
+  }
+}
