@@ -31,7 +31,9 @@ import {
   TrendingUp,
   Bell,
   Gift,
-  Mic
+  Mic,
+  Image,
+  XCircle
 } from "lucide-react";
 import { User as UserType, Issue, Comment } from "./types";
 import MapView from "./components/MapView";
@@ -118,6 +120,9 @@ export default function App() {
   });
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const [mobileSkipPhoto, setMobileSkipPhoto] = useState<boolean>(false);
 
   // AI Auto-fill states
   const [aiLoading, setAiLoading] = useState<boolean>(false);
@@ -149,16 +154,12 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // Auto-launch camera when Report Issue is tapped (mobile only)
+  // Reset mobile camera choices when the report issue modal opens/closes
   useEffect(() => {
-    if (showNewIssueModal && isMobileDevice) {
-      setSelectedFiles([]);
-      const timer = setTimeout(() => {
-        fileInputRef.current?.click();
-      }, 200);
-      return () => clearTimeout(timer);
+    if (!showNewIssueModal) {
+      setMobileSkipPhoto(false);
     }
-  }, [showNewIssueModal, isMobileDevice]);
+  }, [showNewIssueModal]);
 
   // Profile update modal states
   const [showProfileDropdown, setShowProfileDropdown] = useState<boolean>(false);
@@ -2067,49 +2068,98 @@ export default function App() {
               <div className="mb-6">
                 <h3 className="font-display text-2xl font-extrabold text-slate-900">
                   {isMobileDevice 
-                    ? (selectedFiles.length === 0 ? "Step 1: Take Photo of Issue" : "Step 2: Enter Issue Details")
+                    ? (selectedFiles.length === 0 && !mobileSkipPhoto ? "Step 1: Add Photo of Issue" : "Step 2: Enter Issue Details")
                     : "Report Civic Issue"}
                 </h3>
                 <p className="text-xs font-medium text-slate-400 mt-1">
                   {isMobileDevice
-                    ? (selectedFiles.length === 0
-                      ? "Snap a live photo of the issue on the spot using your device's camera to initiate a new report."
-                      : "Review the captured photo and fill in the fields below to complete your civic report.")
+                    ? (selectedFiles.length === 0 && !mobileSkipPhoto
+                      ? "Choose to take a live photo, select from your gallery, or skip to file the report directly."
+                      : "Review your photo choice and fill in the fields below to complete your civic report.")
                     : "Provide details about the civic issue. You can optionally upload a photo as evidence."}
                 </p>
               </div>
 
-              {(selectedFiles.length === 0 && isMobileDevice) ? (
-                <div className="flex flex-col items-center justify-center py-10 text-center">
-                  <div className="mb-6 rounded-full bg-blue-50 p-6 text-blue-600">
-                    <Camera size={48} className="animate-pulse" />
+              {(selectedFiles.length === 0 && isMobileDevice && !mobileSkipPhoto) ? (
+                <div className="flex flex-col py-6">
+                  <div className="flex flex-col items-center justify-center text-center mb-8">
+                    <div className="mb-4 rounded-full bg-blue-50 p-5 text-blue-600">
+                      <Camera size={36} className="text-blue-600 animate-pulse" />
+                    </div>
+                    <h4 className="font-display text-base font-extrabold text-slate-950">
+                      Evidence Photo Choice
+                    </h4>
+                    <p className="mt-2 max-w-sm text-xs font-semibold text-slate-400 leading-relaxed px-4">
+                      Uploading an image helps municipal teams resolve issues faster. However, you can skip if there is a power issue, or if a photo is not required.
+                    </p>
                   </div>
-                  <h4 className="font-display text-base font-extrabold text-slate-950">
-                    Camera View Active
-                  </h4>
-                  <p className="mt-2 max-w-sm text-xs font-semibold text-slate-400 leading-relaxed">
-                    Lokally launches the camera first so citizen reports are verified with live, authentic photos.
-                  </p>
-                  
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="mt-8 flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-4 font-display text-sm font-bold text-white shadow-lg shadow-blue-500/20 hover:from-blue-700 hover:to-indigo-700 transition active:scale-95 cursor-pointer"
-                  >
-                    <Camera size={18} />
-                    <span>Launch Camera / Take Photo</span>
-                  </button>
 
-                  <p className="text-[10px] font-bold text-blue-500 mt-4 max-w-xs">
-                    Your device's rear camera will open directly to snap a photo.
-                  </p>
-                  
+                  <div className="space-y-3 px-1">
+                    {/* Option 1: Take Live Photo */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        cameraInputRef.current?.click();
+                      }}
+                      className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-150 bg-white hover:bg-slate-50 active:bg-slate-100 transition shadow-xs text-left group cursor-pointer"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="p-3 rounded-xl bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition">
+                          <Camera size={20} />
+                        </div>
+                        <div>
+                          <span className="block text-sm font-extrabold text-slate-900">Take Live Photo</span>
+                          <span className="block text-[11px] font-medium text-slate-400 mt-0.5">Use your device's camera to snap a photo</span>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="text-slate-450 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+
+                    {/* Option 2: Select from Gallery */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        galleryInputRef.current?.click();
+                      }}
+                      className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-150 bg-white hover:bg-slate-50 active:bg-slate-100 transition shadow-xs text-left group cursor-pointer"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="p-3 rounded-xl bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100 transition">
+                          <Image size={20} />
+                        </div>
+                        <div>
+                          <span className="block text-sm font-extrabold text-slate-900">Choose from Gallery</span>
+                          <span className="block text-[11px] font-medium text-slate-400 mt-0.5">Upload an existing photo from your library</span>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="text-slate-450 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+
+                    {/* Option 3: Skip Adding Photo */}
+                    <button
+                      type="button"
+                      onClick={() => setMobileSkipPhoto(true)}
+                      className="w-full flex items-center justify-between p-4 rounded-2xl border border-dashed border-slate-250 bg-slate-50/50 hover:bg-slate-100/30 active:bg-slate-100/55 transition text-left group cursor-pointer"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="p-3 rounded-xl bg-slate-200 text-slate-600 group-hover:bg-slate-300 transition">
+                          <XCircle size={20} />
+                        </div>
+                        <div>
+                          <span className="block text-sm font-extrabold text-slate-900">Skip Adding Photo</span>
+                          <span className="block text-[11px] font-medium text-slate-400 mt-0.5">File this civic issue without any image attachment</span>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="text-slate-455 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => setShowNewIssueModal(false)}
-                    className="mt-8 text-xs font-bold text-slate-400 hover:text-slate-600 transition"
+                    className="mt-8 text-center text-xs font-bold text-slate-400 hover:text-slate-600 transition"
                   >
-                    Cancel
+                    Cancel Report
                   </button>
                 </div>
               ) : (
@@ -2133,46 +2183,52 @@ export default function App() {
                           type="button"
                           onClick={() => {
                             setSelectedFiles([]);
-                            setTimeout(() => fileInputRef.current?.click(), 150);
+                            if (isMobileDevice) {
+                              setMobileSkipPhoto(false);
+                            } else {
+                              setTimeout(() => fileInputRef.current?.click(), 150);
+                            }
                           }}
                           className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-2 rounded-xl transition cursor-pointer shadow-xs"
                         >
                           <Camera size={13} />
-                          <span>{isMobileDevice ? "Retake Photo" : "Change Photo"}</span>
+                          <span>{isMobileDevice ? "Retake / Change" : "Change Photo"}</span>
                         </button>
-                        {!isMobileDevice && (
-                          <button
-                            type="button"
-                            onClick={() => setSelectedFiles([])}
-                            className="flex items-center gap-1.5 text-[11px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-xl transition cursor-pointer"
-                          >
-                            <span>Remove</span>
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedFiles([]);
+                            if (isMobileDevice) {
+                              setMobileSkipPhoto(false);
+                            }
+                          }}
+                          className="flex items-center gap-1.5 text-[11px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-xl transition cursor-pointer"
+                        >
+                          <span>Remove</span>
+                        </button>
                       </div>
                     </div>
                   ) : (
                     <div 
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => {
+                        if (isMobileDevice) {
+                          setMobileSkipPhoto(false);
+                        } else {
+                          fileInputRef.current?.click();
+                        }
+                      }}
                       className="border-2 border-dashed border-slate-200 rounded-2xl p-6 bg-slate-50 hover:bg-slate-100/50 hover:border-blue-400 transition cursor-pointer flex flex-col items-center justify-center gap-2 text-center"
                     >
                       <Camera size={24} className="text-slate-400" />
                       <div>
                         <span className="block text-xs font-bold text-slate-700">Add Photo / Evidence (Optional)</span>
-                        <span className="block text-[10px] text-slate-400">Click to upload an image of the civic issue</span>
+                        <span className="block text-[10px] text-slate-400">
+                          {isMobileDevice ? "Tap to select photo or use camera" : "Click to upload an image of the civic issue"}
+                        </span>
                       </div>
                     </div>
                   )}
 
-                  {/* HIDDEN FILE INPUT */}
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    accept="image/*"
-                    capture={isMobileDevice ? "environment" : undefined}
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
@@ -2325,6 +2381,30 @@ export default function App() {
                   </div>
                 </form>
               )}
+
+              {/* HIDDEN FILE INPUTS */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept="image/*"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <input
+                type="file"
+                ref={cameraInputRef}
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <input
+                type="file"
+                ref={galleryInputRef}
+                accept="image/*"
+                onChange={handleFileChange}
+                className="hidden"
+              />
             </motion.div>
           </div>
         )}

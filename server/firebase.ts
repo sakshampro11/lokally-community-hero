@@ -95,8 +95,9 @@ export async function uploadFileToFirebaseStorage(file: any): Promise<string> {
           return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(relativePath)}?alt=media`;
         }
       }
-    } catch (adminError) {
-      console.error("Admin SDK upload failed, falling back to Web SDK:", adminError);
+    } catch (adminError: any) {
+      const errorMsg = adminError?.message || adminError || "Unauthorized / Storage Bucket Not Initialized";
+      console.log(`[Firebase Storage] GCS Admin SDK upload bypassed (${errorMsg.slice(0, 150)}). Falling back to Web SDK...`);
     }
   }
 
@@ -108,8 +109,9 @@ export async function uploadFileToFirebaseStorage(file: any): Promise<string> {
       contentType: file.mimetype,
     });
     return await getDownloadURL(storageRef);
-  } catch (webError) {
-    console.error("Web SDK upload failed, writing file locally to uploads/ directory:", webError);
+  } catch (webError: any) {
+    const errorMsg = webError?.message || webError || "Access Denied / Bucket Unavailable";
+    console.log(`[Firebase Storage] Web SDK upload bypassed (${errorMsg.slice(0, 150)}). Saving file locally to /uploads/...`);
     try {
       const uploadDir = path.join(process.cwd(), "uploads");
       if (!fs.existsSync(uploadDir)) {
@@ -117,11 +119,11 @@ export async function uploadFileToFirebaseStorage(file: any): Promise<string> {
       }
       const localFilePath = path.join(uploadDir, safeName);
       fs.writeFileSync(localFilePath, file.buffer);
-      console.log(`Successfully saved file locally: /uploads/${safeName}`);
+      console.log(`[Local Storage] Successfully saved file locally: /uploads/${safeName}`);
       return `/uploads/${safeName}`;
-    } catch (fsError) {
-      console.error("Failed to write file to local disk:", fsError);
-      throw new Error("Failed to upload or store file: " + (webError as any).message);
+    } catch (fsError: any) {
+      console.error("[Local Storage] Critical: Failed to write file to local disk:", fsError?.message || fsError);
+      throw new Error("Failed to upload or store file: " + (webError?.message || String(webError)));
     }
   }
 }
