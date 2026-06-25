@@ -2,7 +2,11 @@ import React, { useEffect, useState } from "react";
 import { User } from "../types";
 import { Trophy, Award, Medal, ShieldCheck, UserCheck, Star, Sparkles, HelpCircle, X, Info } from "lucide-react";
 
-export default function LeaderboardView() {
+interface LeaderboardViewProps {
+  currentUserRole?: "citizen" | "resolver";
+}
+
+export default function LeaderboardView({ currentUserRole = "citizen" }: LeaderboardViewProps) {
   const [leaderboard, setLeaderboard] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +19,12 @@ export default function LeaderboardView() {
   const fetchLeaderboard = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/auth/leaderboard");
+      const token = localStorage.getItem("ch_token");
+      const res = await fetch("/api/auth/leaderboard", {
+        headers: {
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+      });
       if (res.ok) {
         const data = await res.json();
         setLeaderboard(data);
@@ -33,14 +42,18 @@ export default function LeaderboardView() {
   return (
     <div className="space-y-8 animate-fade-in relative">
       {/* Banner */}
-      <div className="rounded-3xl bg-linear-to-r from-amber-500 via-orange-500 to-rose-500 p-8 text-white shadow-lg relative overflow-hidden">
+      <div className={`rounded-3xl p-8 text-white shadow-lg relative overflow-hidden bg-linear-to-r ${
+        currentUserRole === "resolver"
+          ? "from-blue-600 via-indigo-600 to-violet-600"
+          : "from-amber-500 via-orange-500 to-rose-500"
+      }`}>
         <div className="relative z-10 max-w-lg">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-wider backdrop-blur-xs">
-            <Trophy size={12} /> Citizens Honor Roll
+            <Trophy size={12} /> {currentUserRole === "resolver" ? "Resolvers Honor Roll" : "Citizens Honor Roll"}
           </span>
           <div className="flex items-center gap-2.5 mt-4">
             <h1 className="font-display text-3xl font-extrabold tracking-tight">
-              Locality Leaderboard
+              {currentUserRole === "resolver" ? "Municipal Resolvers" : "Locality Leaderboard"}
             </h1>
             <button
               onClick={() => setShowInfoModal(true)}
@@ -50,8 +63,10 @@ export default function LeaderboardView() {
               <HelpCircle size={16} />
             </button>
           </div>
-          <p className="mt-2 text-sm font-medium text-amber-50 leading-relaxed">
-            Meet the active community heroes working hard to monitor, report, and verify local improvements. Earn points and unlock custom badges by reporting issues or submitting verifications!
+          <p className="mt-2 text-sm font-medium text-white/90 leading-relaxed">
+            {currentUserRole === "resolver"
+              ? "Meet the municipal departments and verified resolvers working to fix our city's infrastructure. Keep up the great work resolving community concerns!"
+              : "Meet the active community heroes working hard to monitor, report, and verify local improvements. Earn points and unlock custom badges by reporting issues or submitting verifications!"}
           </p>
         </div>
         {/* Abstract design element */}
@@ -112,15 +127,21 @@ export default function LeaderboardView() {
                         {user.role === "resolver" ? "Verified Resolver" : "Verified Citizen"}
                       </p>
                       <div className="flex flex-wrap gap-1 mt-2">
-                        {user.badges && user.badges.slice(0, 2).map((badge) => (
-                          <span
-                            key={badge}
-                            className="inline-flex items-center gap-0.5 rounded-full bg-white border border-slate-200/60 px-2 py-0.5 text-[9px] font-extrabold text-slate-500 uppercase tracking-wide"
-                          >
-                            <Star size={8} className="text-amber-500 fill-amber-500" />
-                            {badge}
+                        {currentUserRole === "resolver" ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-100 px-2.5 py-0.5 text-[9px] font-extrabold text-blue-600 uppercase tracking-wide">
+                            {user.resolverIssuesResolved || 0} Resolved
                           </span>
-                        ))}
+                        ) : (
+                          user.badges && user.badges.slice(0, 2).map((badge) => (
+                            <span
+                              key={badge}
+                              className="inline-flex items-center gap-0.5 rounded-full bg-white border border-slate-200/60 px-2 py-0.5 text-[9px] font-extrabold text-slate-500 uppercase tracking-wide"
+                            >
+                              <Star size={8} className="text-amber-500 fill-amber-500" />
+                              {badge}
+                            </span>
+                          ))
+                        )}
                       </div>
                     </div>
                     <div className="text-right">
@@ -148,10 +169,16 @@ export default function LeaderboardView() {
                 <thead>
                   <tr className="border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
                     <th className="py-3 px-4">Rank</th>
-                    <th className="py-3 px-4">Member</th>
+                    <th className="py-3 px-4">{currentUserRole === "resolver" ? "Department" : "Member"}</th>
                     <th className="py-3 px-4">Role</th>
-                    <th className="py-3 px-4 text-center">Reports</th>
-                    <th className="py-3 px-4 text-center">Verifications</th>
+                    {currentUserRole === "resolver" ? (
+                      <th className="py-3 px-4 text-center">Issues Resolved</th>
+                    ) : (
+                      <>
+                        <th className="py-3 px-4 text-center">Reports</th>
+                        <th className="py-3 px-4 text-center">Verifications</th>
+                      </>
+                    )}
                     <th className="py-3 px-4 text-right">Points</th>
                   </tr>
                 </thead>
@@ -175,22 +202,32 @@ export default function LeaderboardView() {
                             <div>
                               <span className="block text-slate-800 truncate max-w-[140px]">{user.name}</span>
                               <span className="block text-[10px] font-medium text-slate-400">
-                                {user.badges && user.badges.length > 0
-                                  ? `${user.badges.length} badges unlocked`
-                                  : "No badges unlocked"}
+                                {currentUserRole === "resolver"
+                                  ? `${user.resolverIssuesResolved || 0} resolutions logged`
+                                  : user.badges && user.badges.length > 0
+                                    ? `${user.badges.length} badges unlocked`
+                                    : "No badges unlocked"}
                               </span>
                             </div>
                           </div>
                         </td>
                         <td className="py-3.5 px-4 capitalize text-slate-500">
-                          {user.role}
+                          {user.role === "resolver" ? "Official Resolver" : "Civic Citizen"}
                         </td>
-                        <td className="py-3.5 px-4 text-center text-slate-700">
-                          {user.reportsCount || 0}
-                        </td>
-                        <td className="py-3.5 px-4 text-center text-slate-700">
-                          {user.verificationsCount || 0}
-                        </td>
+                        {currentUserRole === "resolver" ? (
+                          <td className="py-3.5 px-4 text-center text-slate-700">
+                            {user.resolverIssuesResolved || 0}
+                          </td>
+                        ) : (
+                          <>
+                            <td className="py-3.5 px-4 text-center text-slate-700">
+                              {user.reportsCount || 0}
+                            </td>
+                            <td className="py-3.5 px-4 text-center text-slate-700">
+                              {user.verificationsCount || 0}
+                            </td>
+                          </>
+                        )}
                         <td className="py-3.5 px-4 text-right font-display text-sm font-extrabold text-slate-900">
                           {user.points || 0}
                         </td>
@@ -221,7 +258,7 @@ export default function LeaderboardView() {
               </div>
               <div>
                 <h2 className="font-display text-2xl font-extrabold text-slate-900 tracking-tight">
-                  How Gamification Works
+                  How Leaderboard Works
                 </h2>
                 <p className="text-xs font-semibold text-slate-400 mt-0.5">
                   Earn points, complete milestones, and unlock official civic badges!

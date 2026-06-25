@@ -45,7 +45,8 @@ export default function MapPicker({ lat, lng, onChange }: MapPickerProps) {
     const map = L.map(mapContainerRef.current, {
       zoomControl: true,
       minZoom: 2,
-    }).setView([initialLat, initialLng], typeof lat === "number" ? 15 : DEFAULT_ZOOM);
+      tap: true, // Native Leaflet tap handler for touch devices
+    } as any).setView([initialLat, initialLng], typeof lat === "number" ? 15 : DEFAULT_ZOOM);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: '© <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
@@ -129,7 +130,7 @@ export default function MapPicker({ lat, lng, onChange }: MapPickerProps) {
             Mark Location on Map
           </span>
           <p className="text-[10px] font-medium text-slate-400">
-            Click/drag the red pin to set the exact problem location.
+            Tap anywhere on the map or drag the red pin to set the exact location.
           </p>
         </div>
         <button

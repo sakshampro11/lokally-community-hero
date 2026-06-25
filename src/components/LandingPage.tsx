@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   Shield,
   Sparkles,
@@ -21,18 +22,102 @@ import {
   Gift,
   Copy,
   Share2,
-  X
+  X,
+  Camera,
+  ThumbsUp,
+  Map as MapIcon,
+  ChevronRight
 } from "lucide-react";
 
 interface LandingPageProps {
   onNavigate: (mode: "login" | "register" | "resolver-login") => void;
 }
 
+const LogoIcon = () => (
+  <div className="relative h-10 w-10 flex items-center justify-center rounded-2xl bg-gradient-to-tr from-slate-950 via-slate-900 to-indigo-950 shadow-md group shrink-0">
+    <div className="absolute inset-0.5 rounded-[14px] bg-slate-900 opacity-90 transition-all duration-300 group-hover:opacity-75" />
+    <div className="absolute h-6 w-6 rounded-full bg-blue-500/10 border border-blue-500/25 animate-ping" style={{ animationDuration: '3s' }} />
+    <MapPin size={16} className="text-blue-500 relative z-10 transition-transform duration-300 group-hover:scale-110 group-hover:text-indigo-400" />
+    <span className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-emerald-500 border border-slate-900 z-20 animate-pulse" />
+  </div>
+);
+
+const resolutionSteps = [
+  {
+    id: 1,
+    stepTitle: "1. Snap & Identify",
+    badge: "Reported",
+    badgeColor: "bg-blue-50 text-blue-600 border-blue-100",
+    description: "Snap a live geo-tagged photo. AI detects details and pre-fills category, priority, and title instantly.",
+    issueTitle: "Hazardous Pothole",
+    issueDesc: "Deep pothole on Main St. endangering bikers.",
+    statusText: "Initializing Secure Report...",
+    bgColor: "from-blue-500/10 to-indigo-500/10"
+  },
+  {
+    id: 2,
+    stepTitle: "2. Upvotes & Trust",
+    badge: "Verified",
+    badgeColor: "bg-violet-50 text-violet-600 border-violet-100",
+    description: "Neighbors upvote to confirm and escalate priority. Safe citizen reports gain fast community momentum.",
+    issueTitle: "Hazardous Pothole",
+    issueDesc: "Deep pothole on Main St. endangering bikers.",
+    statusText: "Verified by 24 neighbors",
+    bgColor: "from-violet-500/10 to-purple-500/10"
+  },
+  {
+    id: 3,
+    stepTitle: "3. Resolver Claim",
+    badge: "In Progress",
+    badgeColor: "bg-amber-50 text-amber-600 border-amber-100",
+    description: "Official district resolvers receive the verified alert and schedule dispatch immediately.",
+    issueTitle: "Hazardous Pothole",
+    issueDesc: "Deep pothole on Main St. endangering bikers.",
+    statusText: "Assigned: Public Works Team B",
+    bgColor: "from-amber-500/10 to-orange-500/10"
+  },
+  {
+    id: 4,
+    stepTitle: "4. Live Action",
+    badge: "In Progress",
+    badgeColor: "bg-amber-50 text-amber-600 border-amber-100",
+    description: "Resolvers share live progress notes and photos on-site. The neighborhood stays fully informed.",
+    issueTitle: "Hazardous Pothole",
+    issueDesc: "Repair crew is laying hot-mix asphalt and compacting.",
+    statusText: "Status: Laying Asphalt (80% Done)",
+    bgColor: "from-yellow-500/10 to-amber-500/10"
+  },
+  {
+    id: 5,
+    stepTitle: "5. Solved & Rewarded",
+    badge: "Resolved",
+    badgeColor: "bg-emerald-50 text-emerald-600 border-emerald-100",
+    description: "The issue is resolved and marked clean! Citizen earns +50 impact points and civic reputation.",
+    issueTitle: "Hazardous Pothole",
+    issueDesc: "Pothole completely filled and leveled with road surface.",
+    statusText: "Issue Solved! +50 Civic Points",
+    bgColor: "from-emerald-500/10 to-teal-500/10"
+  }
+];
+
 export default function LandingPage({ onNavigate }: LandingPageProps) {
   const [showReferModal, setShowReferModal] = useState(false);
   const [referNameOrEmail, setReferNameOrEmail] = useState("");
   const [generatedLink, setGeneratedLink] = useState("");
   const [copied, setCopied] = useState(false);
+
+  // Animated resolution steps
+  const [activeStep, setActiveStep] = useState(0);
+  const [stepAutoplay, setStepAutoplay] = useState(true);
+
+  // Auto-cycle steps (every 5 seconds)
+  useEffect(() => {
+    if (!stepAutoplay) return;
+    const interval = setInterval(() => {
+      setActiveStep((prev) => (prev + 1) % resolutionSteps.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [stepAutoplay]);
 
   const handleGenerateLink = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,16 +147,21 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100 px-6 py-4 sm:px-12 transition-all">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           {/* Logo */}
-          <div
-            className="flex items-center gap-2 cursor-pointer select-none"
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          >
-            <div className="h-9 w-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-600/20">
-              <MapPin size={18} className="animate-bounce" />
+          <div className="flex items-center gap-3">
+            <div
+              className="flex items-center gap-2.5 cursor-pointer select-none group"
+              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            >
+              <LogoIcon />
+              <div className="flex flex-col">
+                <span className="font-display text-2xl font-black text-slate-900 tracking-tight leading-none">
+                  Lokally
+                </span>
+                <span className="text-[8px] font-black text-indigo-600 uppercase tracking-widest mt-1">
+                  Civic Hub
+                </span>
+              </div>
             </div>
-            <span className="font-display text-2xl font-black text-slate-900 tracking-tight">
-              Lokally
-            </span>
           </div>
 
           {/* Navigation */}
@@ -164,74 +254,325 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           </div>
 
           {/* Right Illustration & Live Preview Mockup */}
-          <div className="lg:col-span-6 flex justify-center">
-            <div className="w-full max-w-[480px] rounded-[32px] bg-slate-900 p-3 shadow-2xl relative border border-slate-850">
-              <div className="absolute -top-4 -right-4 bg-amber-500 text-white rounded-2xl px-3 py-1.5 text-[10px] font-black tracking-wider uppercase shadow-lg flex items-center gap-1">
-                <Sparkle size={10} className="animate-spin" />
-                <span>AI INTEGRATED</span>
+          <div className="lg:col-span-6 flex flex-col items-center justify-center">
+            {/* The smartphone container */}
+            <div className="w-full max-w-[440px] rounded-[38px] bg-slate-950 p-3.5 shadow-2xl relative border border-slate-800">
+              {/* Dynamic status pill */}
+              <div className="absolute -top-3.5 -right-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl px-3 py-1.5 text-[9px] font-black tracking-wider uppercase shadow-lg flex items-center gap-1.5 z-10">
+                <Sparkle size={11} className="animate-spin text-amber-300" />
+                <span>AI POWERED CIVIC FLOW</span>
               </div>
 
               {/* Mockup screen */}
-              <div className="bg-slate-50 rounded-[24px] overflow-hidden border border-slate-100 p-5 space-y-4">
+              <div className="bg-slate-50 rounded-[28px] overflow-hidden border border-slate-100 p-4 min-h-[390px] flex flex-col justify-between relative">
                 {/* Header of mockup */}
-                <div className="flex justify-between items-center pb-3 border-b border-slate-200/50">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-slate-300"></span>
-                    <span className="h-2.5 w-2.5 rounded-full bg-slate-300"></span>
-                    <span className="h-2.5 w-2.5 rounded-full bg-slate-300"></span>
+                <div className="flex justify-between items-center pb-2.5 border-b border-slate-200/50">
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-red-400"></span>
+                    <span className="h-2 w-2 rounded-full bg-yellow-400"></span>
+                    <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
                   </div>
-                  <span className="text-[10px] font-mono text-slate-400">lokally.org/feed</span>
+                  <span className="text-[9px] font-mono font-bold text-slate-400">lokally.org/simulated-flow</span>
+                  <span className="text-[9px] font-mono font-bold text-slate-500 bg-slate-200/60 px-1.5 py-0.5 rounded-md">LIVE</span>
                 </div>
 
-                {/* Simulated Feed card */}
-                <div className="bg-white rounded-2xl border border-slate-150 p-4 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-7 w-7 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-700">
-                        AC
-                      </div>
-                      <div>
-                        <h4 className="text-[11px] font-bold text-slate-900">Alex Citizen</h4>
-                        <span className="text-[9px] text-slate-400">22 hours ago</span>
-                      </div>
-                    </div>
-                    <span className="bg-amber-50 border border-amber-100 rounded-full px-2 py-0.5 text-[8px] font-extrabold text-amber-600 uppercase">
-                      In Progress
-                    </span>
-                  </div>
+                {/* ANIMATED TRANSITION AREA */}
+                <div className="my-3 flex-1 flex flex-col justify-center">
+                  <AnimatePresence mode="wait">
+                    {activeStep === 0 && (
+                      <motion.div
+                        key="step0"
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -15 }}
+                        className="space-y-3"
+                      >
+                        {/* Live Camera View Finder */}
+                        <div className="relative rounded-2xl overflow-hidden border border-slate-300 h-36 bg-slate-900 flex items-center justify-center">
+                          {/* Simulated pothole photo */}
+                          <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1515162305285-0293e4767cc2?auto=format&fit=crop&q=80&w=600')] bg-cover bg-center opacity-70" />
+                          
+                          {/* Scan-line animation */}
+                          <div className="absolute inset-x-0 h-0.5 bg-blue-500 top-0 animate-bounce" style={{ animationDuration: '3s' }} />
+                          
+                          {/* Camera grid overlay */}
+                          <div className="absolute inset-0 border border-white/10 grid grid-cols-3 grid-rows-3 pointer-events-none" />
+                          
+                          {/* Live Geo Tag indicator */}
+                          <div className="absolute bottom-2 left-2 bg-slate-900/80 backdrop-blur-xs px-2 py-1 rounded-lg text-[9px] font-bold text-white flex items-center gap-1">
+                            <MapPin size={9} className="text-red-500 animate-pulse" />
+                            <span>GPS: Lat 28.61, Lng 77.20</span>
+                          </div>
 
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-900">Broken Streetlight</h5>
-                    <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
-                      Flickering and dark streetlight near Sector 4 block entrance.
-                    </p>
-                  </div>
+                          <div className="absolute top-2 right-2 bg-blue-600 text-white font-extrabold text-[8px] px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
+                            Viewfinder
+                          </div>
+                        </div>
 
-                  <div className="flex justify-between items-center pt-2 border-t border-slate-100 text-[10px] text-slate-400">
-                    <div className="flex gap-2">
-                      <span className="font-bold text-slate-600 bg-slate-50 px-2 py-1 rounded-lg">Upvotes (12)</span>
-                      <span className="font-bold text-slate-600 bg-slate-50 px-2 py-1 rounded-lg">Comments (3)</span>
-                    </div>
-                    <span className="text-blue-600 font-bold">View details →</span>
-                  </div>
+                        {/* AI Detection HUD */}
+                        <div className="bg-white rounded-xl border border-slate-200 p-2.5 shadow-xs">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <Sparkles size={12} className="text-violet-600 animate-pulse" />
+                            <span className="text-[10px] font-extrabold text-violet-700 uppercase tracking-wider">AI Auto-Detection Complete</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5 text-[9px]">
+                            <div className="bg-slate-50 p-1 rounded border border-slate-100">
+                              <span className="text-slate-400 block font-bold">CATEGORY</span>
+                              <span className="text-slate-800 font-extrabold">Road Condition</span>
+                            </div>
+                            <div className="bg-slate-50 p-1 rounded border border-slate-100">
+                              <span className="text-slate-400 block font-bold">SEVERITY</span>
+                              <span className="text-rose-600 font-extrabold">High Priority</span>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {activeStep === 1 && (
+                      <motion.div
+                        key="step1"
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -15 }}
+                        className="space-y-3"
+                      >
+                        {/* Feed card mockup with dynamic upvoting */}
+                        <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="h-6 w-6 rounded-full bg-blue-100 flex items-center justify-center text-[9px] font-bold text-blue-700">
+                                AC
+                              </div>
+                              <div>
+                                <h4 className="text-[10px] font-extrabold text-slate-950">Alex Citizen</h4>
+                                <span className="text-[8px] font-bold text-slate-400">Verified Citizen</span>
+                              </div>
+                            </div>
+                            <span className="bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5 text-[8px] font-extrabold text-blue-600 uppercase">
+                              Reported
+                            </span>
+                          </div>
+
+                          <div>
+                            <h5 className="text-[11px] font-extrabold text-slate-900 flex items-center gap-1">
+                              <span>Hazardous Pothole</span>
+                              <span className="text-[8px] font-bold text-red-500 bg-red-50 px-1 py-0.2 rounded">Severe</span>
+                            </h5>
+                            <p className="text-[9px] text-slate-500 mt-0.5 leading-normal font-medium">
+                              Deep pavement depression on Main Street blocking left lane.
+                            </p>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                            <div className="flex gap-2">
+                              {/* Pulsing Upvote bubble */}
+                              <div className="flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-1 rounded-lg text-[9px] font-black animate-bounce">
+                                <ThumbsUp size={10} />
+                                <span>Upvotes (24)</span>
+                              </div>
+                              <div className="bg-slate-50 text-slate-600 border border-slate-200 px-2 py-1 rounded-lg text-[9px] font-bold">
+                                Comments (4)
+                              </div>
+                            </div>
+                            <span className="text-[9px] font-extrabold text-indigo-600">Trust Index: 100%</span>
+                          </div>
+                        </div>
+
+                        {/* Neighbor Comment bubble */}
+                        <div className="bg-slate-100 border border-slate-200 rounded-xl p-2.5 flex gap-2">
+                          <div className="h-5 w-5 rounded-full bg-indigo-100 flex items-center justify-center text-[8px] font-bold text-indigo-700 shrink-0">
+                            R
+                          </div>
+                          <p className="text-[9px] text-slate-600 font-medium leading-normal">
+                            <span className="font-bold block text-slate-800">Rita (Neighbor):</span>
+                            My car took heavy impact here yesterday. Highly dangerous!
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {activeStep === 2 && (
+                      <motion.div
+                        key="step2"
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -15 }}
+                        className="space-y-3"
+                      >
+                        {/* Dispatch Tracker Map */}
+                        <div className="relative rounded-2xl overflow-hidden border border-slate-200 h-32 bg-slate-100 flex items-center justify-center">
+                          {/* Simulated mini map */}
+                          <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&q=80&w=600')] bg-cover bg-center opacity-40 filter grayscale" />
+                          
+                          {/* Simulated pin */}
+                          <div className="absolute top-1/2 left-1/3 -translate-x-1/2 -translate-y-1/2 text-blue-600 flex flex-col items-center">
+                            <div className="h-6 w-6 rounded-full bg-blue-600 flex items-center justify-center text-white border-2 border-white shadow-md animate-pulse">
+                              <MapIcon size={12} />
+                            </div>
+                            <span className="text-[8px] font-bold bg-slate-900 text-white px-1 py-0.2 rounded mt-1">Crew #4</span>
+                          </div>
+
+                          <div className="absolute top-1/3 right-1/3 text-rose-600 flex flex-col items-center">
+                            <MapPin size={16} className="animate-bounce" />
+                            <span className="text-[8px] font-bold bg-rose-600 text-white px-1 py-0.2 rounded mt-0.5">Pothole</span>
+                          </div>
+
+                          {/* Trail connecting pin */}
+                          <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                            <path d="M 140 80 Q 180 40 230 60" fill="transparent" stroke="#2563eb" strokeWidth="2" strokeDasharray="4,4" className="animate-[dash_2s_linear_infinite]" />
+                          </svg>
+                        </div>
+
+                        {/* Dispatch ticket notification */}
+                        <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-full bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                            <Clock size={16} className="animate-spin" style={{ animationDuration: '4s' }} />
+                          </div>
+                          <div>
+                            <h4 className="text-[10px] font-extrabold text-amber-800 uppercase tracking-wider">RESOLVER ASSIGNED</h4>
+                            <p className="text-[9px] text-slate-600 font-bold mt-0.5 leading-normal">
+                              Municipal Works Team B marked ticket as "Scheduled". Dispatch crew en-route.
+                            </p>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {activeStep === 3 && (
+                      <motion.div
+                        key="step3"
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -15 }}
+                        className="space-y-3"
+                      >
+                        {/* Live Crew progress card */}
+                        <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-xs space-y-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-800 text-[10px] font-extrabold">
+                              👷‍♂️
+                            </div>
+                            <div>
+                              <h4 className="text-[10px] font-extrabold text-slate-900">Dave (Municipal Lead)</h4>
+                              <span className="text-[8px] font-extrabold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 uppercase">On-Site Work Active</span>
+                            </div>
+                          </div>
+
+                          {/* Active Asphalt Repair Photo */}
+                          <div className="relative rounded-xl overflow-hidden h-24 border border-slate-200">
+                            <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1590069261209-f8e9b8642343?auto=format&fit=crop&q=80&w=600')] bg-cover bg-center" />
+                            <div className="absolute inset-0 bg-slate-900/40 flex items-center justify-center">
+                              <span className="text-white text-[10px] font-extrabold bg-slate-900/80 px-2 py-1 rounded-lg flex items-center gap-1.5">
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping"></span>
+                                Live Resolution Update
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Repair progress bar */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center text-[9px] font-bold text-slate-500">
+                              <span>Asphalt Laying & Levelling</span>
+                              <span className="text-blue-600 font-extrabold">80% Done</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                              <div className="h-full bg-blue-600 rounded-full animate-[pulse_1.5s_infinite]" style={{ width: '80%' }} />
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {activeStep === 4 && (
+                      <motion.div
+                        key="step4"
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -15 }}
+                        className="space-y-3"
+                      >
+                        {/* Solved Celebration card */}
+                        <div className="bg-emerald-50/60 border border-emerald-100 rounded-2xl p-4 text-center space-y-3 relative overflow-hidden">
+                          {/* Absolute micro sparkling star elements */}
+                          <div className="absolute top-2 left-4 text-amber-500 text-xs animate-bounce">⭐</div>
+                          <div className="absolute bottom-4 right-4 text-amber-500 text-xs animate-bounce" style={{ animationDelay: '0.5s' }}>⭐</div>
+
+                          <div className="mx-auto h-12 w-12 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
+                            <CheckCircle2 size={24} className="scale-110" />
+                          </div>
+
+                          <div>
+                            <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full px-2.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider">
+                              Verified Resolved
+                            </span>
+                            <h4 className="text-xs font-black text-slate-900 mt-1.5">Road Leveled & Polished</h4>
+                            <p className="text-[9px] text-slate-500 font-medium leading-relaxed max-w-xs mx-auto mt-1">
+                              Alexander's report is officially solved. Pothole filled and sealed.
+                            </p>
+                          </div>
+
+                          {/* Reward points badge */}
+                          <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-white rounded-xl px-3 py-1.5 shadow-sm">
+                            <Trophy size={11} className="text-white shrink-0" />
+                            <span className="text-[10px] font-black tracking-tight leading-none">+50 Civic XP Added</span>
+                          </div>
+                        </div>
+
+                        {/* Neighbor notification summary */}
+                        <div className="bg-white border border-slate-200 rounded-xl p-2.5 flex items-center justify-between">
+                          <span className="text-[9px] text-slate-400 font-bold">Reputation level</span>
+                          <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">"Local Guardian" Badge</span>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
-                {/* Secondary resolution card mockup */}
-                <div className="bg-emerald-50/60 border border-emerald-100 rounded-2xl p-3.5 flex items-center justify-between">
-                  <div className="flex gap-2.5 items-center">
-                    <div className="h-7 w-7 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                      <CheckCircle2 size={16} />
-                    </div>
-                    <div>
-                      <h4 className="text-[11px] font-bold text-slate-900">Resolution Status Verified</h4>
-                      <p className="text-[9px] text-slate-500">Verified by Municipal Officer</p>
-                    </div>
+                {/* STEP CONTROLS (TABS) */}
+                <div className="border-t border-slate-200/60 pt-2.5">
+                  <div className="flex justify-between items-center text-[9px] font-bold text-slate-400 mb-2">
+                    <span>Complaint Lifecycle Simulator</span>
+                    <button
+                      onClick={() => setStepAutoplay(!stepAutoplay)}
+                      className={`px-2 py-0.5 rounded-md hover:bg-slate-200/50 transition font-black text-[8px] ${
+                        stepAutoplay ? "text-blue-600 bg-blue-50" : "text-slate-500 bg-slate-200"
+                      }`}
+                    >
+                      {stepAutoplay ? "⏸ Pause Cycle" : "▶ Resume Cycle"}
+                    </button>
                   </div>
-                  <span className="text-[9px] font-mono text-emerald-600 bg-white/80 border border-emerald-200 rounded-lg px-2 py-1 font-bold">
-                    Fixed
-                  </span>
+
+                  <div className="grid grid-cols-5 gap-1">
+                    {resolutionSteps.map((step, idx) => {
+                      const isActive = activeStep === idx;
+                      return (
+                        <button
+                          key={step.id}
+                          onClick={() => {
+                            setStepAutoplay(false);
+                            setActiveStep(idx);
+                          }}
+                          className={`text-[8px] py-1.5 rounded-lg border font-extrabold transition-all truncate flex flex-col items-center justify-center ${
+                            isActive
+                              ? "bg-slate-900 border-slate-950 text-white shadow-xs scale-[1.03]"
+                              : "bg-white hover:bg-slate-100 border-slate-200 text-slate-500"
+                          }`}
+                        >
+                          <span className="block">{idx + 1}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
+            </div>
+
+            {/* Simulated legend / instruction card under the phone */}
+            <div className="mt-4 max-w-[380px] text-center">
+              <p className="text-[11px] font-semibold text-slate-500 leading-relaxed">
+                <span className="text-slate-800 font-extrabold">Interactive Sandbox:</span> {resolutionSteps[activeStep].description}
+              </p>
             </div>
           </div>
         </div>
@@ -490,10 +831,8 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       <footer className="bg-white border-t border-slate-150 py-16 mt-12">
         <div className="max-w-7xl mx-auto px-6 sm:px-12 flex flex-col md:flex-row items-center justify-between gap-8">
           {/* Logo */}
-          <div className="flex items-center gap-2 cursor-pointer select-none">
-            <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
-              <MapPin size={15} />
-            </div>
+          <div className="flex items-center gap-2.5 cursor-pointer select-none">
+            <LogoIcon />
             <span className="font-display text-xl font-black text-slate-900 tracking-tight">
               Lokally
             </span>

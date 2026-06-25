@@ -20,6 +20,7 @@ import {
   Activity,
   Info,
   Check,
+  Camera,
   Shield,
   Phone,
   CornerDownRight,
@@ -125,6 +126,17 @@ export default function App() {
     setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 4000);
   };
+
+  // Auto-launch camera when Report Issue is tapped
+  useEffect(() => {
+    if (showNewIssueModal) {
+      setSelectedFiles([]);
+      const timer = setTimeout(() => {
+        fileInputRef.current?.click();
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [showNewIssueModal]);
 
   // Profile update modal states
   const [showProfileDropdown, setShowProfileDropdown] = useState<boolean>(false);
@@ -1705,7 +1717,7 @@ export default function App() {
           )}
 
           {activeTab === "leaderboard" && (
-            <LeaderboardView />
+            <LeaderboardView currentUserRole={user?.role} />
           )}
         </div>
 
@@ -1739,194 +1751,212 @@ export default function App() {
 
               <div className="mb-6">
                 <h3 className="font-display text-2xl font-extrabold text-slate-900">
-                  Report a Civic Issue
+                  {selectedFiles.length === 0 ? "Step 1: Take Photo of Issue" : "Step 2: Enter Issue Details"}
                 </h3>
                 <p className="text-xs font-medium text-slate-400 mt-1">
-                  Detail a local concern below so community authorities and neighbors can coordinate.
+                  {selectedFiles.length === 0
+                    ? "Snap a live photo of the issue on the spot using your device's camera to initiate a new report."
+                    : "Review the captured photo and fill in the fields below to complete your civic report."}
                 </p>
               </div>
 
-              <form onSubmit={handleIssueSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Issue Title
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={newIssue.title}
-                      onChange={(e) => setNewIssue({ ...newIssue, title: e.target.value })}
-                      placeholder="e.g. Broken water pipeline"
-                      className="w-full rounded-xl border border-slate-250 bg-slate-50/50 px-4 py-2.5 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white"
-                    />
+              {selectedFiles.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <div className="mb-6 rounded-full bg-blue-50 p-6 text-blue-600">
+                    <Camera size={48} className="animate-pulse" />
                   </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Category
-                    </label>
-                    <select
-                      required
-                      value={newIssue.issueType}
-                      onChange={(e) => setNewIssue({ ...newIssue, issueType: e.target.value })}
-                      className="w-full rounded-xl border border-slate-250 bg-slate-50/50 px-4 py-2.5 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white cursor-pointer"
-                    >
-                      <option value="">Select Category</option>
-                      <option value="Water">Water Supply</option>
-                      <option value="Electricity">Electricity</option>
-                      <option value="Road">Road Condition</option>
-                      <option value="Sanitation">Sanitation</option>
-                      <option value="Waste">Waste & Garbage</option>
-                      <option value="Pothole">Potholes</option>
-                      <option value="Streetlight">Streetlights</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
-                      Description
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleAutoFillWithAI}
-                      disabled={aiLoading}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 disabled:bg-slate-100 disabled:text-slate-400 rounded-lg transition"
-                    >
-                      <Sparkles size={12} className={aiLoading ? "animate-spin" : ""} />
-                      <span>{aiLoading ? "Auto-filling..." : "Auto-fill with AI"}</span>
-                    </button>
-                  </div>
-                  <textarea
-                    required
-                    rows={3}
-                    value={newIssue.description}
-                    onChange={(e) => setNewIssue({ ...newIssue, description: e.target.value })}
-                    placeholder="Provide a detailed description of the problem..."
-                    className="w-full rounded-xl border border-slate-250 bg-slate-50/50 px-4 py-2.5 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white resize-none"
-                  />
-                  {aiError && (
-                    <p className="text-[11px] font-semibold text-rose-500 mt-1">{aiError}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                    Priority Severity
-                  </label>
-                  <div className="flex gap-4">
-                    {["Low", "Medium", "High"].map((p) => (
-                      <label key={p} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="priority"
-                          value={p}
-                          checked={newIssue.priority === p}
-                          onChange={() => setNewIssue({ ...newIssue, priority: p })}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="text-xs font-bold text-slate-600">{p}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* INTERACTIVE MAP PICKER */}
-                <MapPicker
-                  lat={newIssue.lat}
-                  lng={newIssue.lng}
-                  onChange={handleMapPickerChange}
-                />
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Physical Address / Locality Reference
-                  </label>
-                  <input
-                    type="text"
-                    value={newIssue.address}
-                    onChange={(e) => setNewIssue({ ...newIssue, address: e.target.value })}
-                    placeholder="e.g. Sector 4, MG Road, near City Library"
-                    className="w-full rounded-xl border border-slate-250 bg-slate-50/50 px-4 py-2.5 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1 font-medium">
-                    You can drop a pin on the map, write an address, or do both. At least one is required.
+                  <h4 className="font-display text-base font-extrabold text-slate-950">
+                    Camera View Active
+                  </h4>
+                  <p className="mt-2 max-w-sm text-xs font-semibold text-slate-400 leading-relaxed">
+                    Lokally launches the camera first so citizen reports are verified with live, authentic photos.
                   </p>
-                </div>
-
-                {/* MEDIA FILES UPLOAD ZONE */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Attach Photos / Videos (Max 5)
-                  </label>
-                  <div
+                  
+                  <button
+                    type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 py-6 text-center cursor-pointer hover:bg-blue-50/30 hover:border-blue-400 transition duration-200"
+                    className="mt-8 flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-4 font-display text-sm font-bold text-white shadow-lg shadow-blue-500/20 hover:from-blue-700 hover:to-indigo-700 transition active:scale-95 cursor-pointer"
                   >
-                    <Upload size={32} className="text-slate-300 mb-2" />
-                    <span className="text-xs font-bold text-slate-600">Click to upload files</span>
-                    <span className="text-[10px] font-medium text-slate-400 mt-1">
-                      Accepts JPEG, PNG, WEBP, GIF, MP4, WebM (Max 50MB per file)
-                    </span>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      multiple
-                      accept="image/*,video/*"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                  </div>
+                    <Camera size={18} />
+                    <span>Launch Camera / Take Photo</span>
+                  </button>
 
-                  {/* Previews */}
-                  {selectedFiles.length > 0 && (
-                    <div className="mt-3.5 flex flex-wrap gap-2">
-                      {selectedFiles.map((file, i) => {
-                        const isVideo = file.type.startsWith("video/");
-                        const previewUrl = URL.createObjectURL(file);
-                        return (
-                          <div
-                            key={i}
-                            className="relative flex h-14 w-20 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-sm"
-                          >
-                            {isVideo ? (
-                              <video src={previewUrl} muted className="h-full w-full object-cover" />
-                            ) : (
-                              <img src={previewUrl} alt="Preview" className="h-full w-full object-cover" />
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => removeSelectedFile(i)}
-                              className="absolute top-1 right-1 rounded-full bg-slate-900/60 p-0.5 text-white hover:bg-rose-600"
-                            >
-                              <X size={10} />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                  <p className="text-[10px] font-bold text-blue-500 mt-4 max-w-xs">
+                    Your device's rear camera will open directly to snap a photo.
+                  </p>
 
-                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  
                   <button
                     type="button"
                     onClick={() => setShowNewIssueModal(false)}
-                    className="rounded-xl px-5 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 transition"
+                    className="mt-8 text-xs font-bold text-slate-400 hover:text-slate-600 transition"
                   >
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    className="rounded-xl bg-blue-600 px-6 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700 active:scale-95"
-                  >
-                    Report Issue
-                  </button>
                 </div>
-              </form>
+              ) : (
+                <form onSubmit={handleIssueSubmit} className="space-y-6">
+                  {/* Photo Preview Card */}
+                  <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 p-4 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img
+                        src={URL.createObjectURL(selectedFiles[0])}
+                        alt="Captured issue"
+                        className="h-16 w-16 rounded-xl object-cover border border-slate-200 shrink-0 shadow-sm"
+                      />
+                      <div className="min-w-0">
+                        <span className="block text-[10px] font-extrabold text-blue-600 uppercase tracking-wider">Photo Captured</span>
+                        <span className="block text-xs text-slate-700 font-extrabold truncate">{selectedFiles[0].name}</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFiles([]);
+                        setTimeout(() => fileInputRef.current?.click(), 150);
+                      }}
+                      className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 px-3.5 py-2 rounded-xl transition shrink-0 shadow-xs cursor-pointer"
+                    >
+                      <Camera size={13} />
+                      <span>Retake Photo</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                        Issue Title
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newIssue.title}
+                        onChange={(e) => setNewIssue({ ...newIssue, title: e.target.value })}
+                        placeholder="e.g. Broken water pipeline"
+                        className="w-full rounded-xl border border-slate-250 bg-slate-50/50 px-4 py-2.5 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                        Category
+                      </label>
+                      <select
+                        required
+                        value={newIssue.issueType}
+                        onChange={(e) => setNewIssue({ ...newIssue, issueType: e.target.value })}
+                        className="w-full rounded-xl border border-slate-250 bg-slate-50/50 px-4 py-2.5 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white cursor-pointer"
+                      >
+                        <option value="">Select Category</option>
+                        <option value="Water">Water Supply</option>
+                        <option value="Electricity">Electricity</option>
+                        <option value="Road">Road Condition</option>
+                        <option value="Sanitation">Sanitation</option>
+                        <option value="Waste">Waste & Garbage</option>
+                        <option value="Pothole">Potholes</option>
+                        <option value="Streetlight">Streetlights</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        Description
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleAutoFillWithAI}
+                        disabled={aiLoading}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 disabled:bg-slate-100 disabled:text-slate-400 rounded-lg transition"
+                      >
+                        <Sparkles size={12} className={aiLoading ? "animate-spin" : ""} />
+                        <span>{aiLoading ? "Auto-filling..." : "Auto-fill with AI"}</span>
+                      </button>
+                    </div>
+                    <textarea
+                      required
+                      rows={3}
+                      value={newIssue.description}
+                      onChange={(e) => setNewIssue({ ...newIssue, description: e.target.value })}
+                      placeholder="Provide a detailed description of the problem..."
+                      className="w-full rounded-xl border border-slate-250 bg-slate-50/50 px-4 py-2.5 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white resize-none"
+                    />
+                    {aiError && (
+                      <p className="text-[11px] font-semibold text-rose-500 mt-1">{aiError}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                      Priority Severity
+                    </label>
+                    <div className="flex gap-4">
+                      {["Low", "Medium", "High"].map((p) => (
+                        <label key={p} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="priority"
+                            value={p}
+                            checked={newIssue.priority === p}
+                            onChange={() => setNewIssue({ ...newIssue, priority: p })}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-xs font-bold text-slate-600">{p}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* INTERACTIVE MAP PICKER */}
+                  <MapPicker
+                    lat={newIssue.lat}
+                    lng={newIssue.lng}
+                    onChange={handleMapPickerChange}
+                  />
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Physical Address / Locality Reference
+                    </label>
+                    <input
+                      type="text"
+                      value={newIssue.address}
+                      onChange={(e) => setNewIssue({ ...newIssue, address: e.target.value })}
+                      placeholder="e.g. Sector 4, MG Road, near City Library"
+                      className="w-full rounded-xl border border-slate-250 bg-slate-50/50 px-4 py-2.5 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1 font-medium">
+                      You can drop a pin on the map, write an address, or do both. At least one is required.
+                    </p>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setShowNewIssueModal(false)}
+                      className="rounded-xl px-5 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="rounded-xl bg-blue-600 px-6 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700 active:scale-95"
+                    >
+                      Report Issue
+                    </button>
+                  </div>
+                </form>
+              )}
             </motion.div>
           </div>
         )}
@@ -2220,6 +2250,10 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Legacy profile modal replaced by dropdown */}
+        </>
+      )}
+
       {/* Logout Confirmation Modal */}
       <AnimatePresence>
         {showLogoutConfirm && (
@@ -2266,10 +2300,6 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
-
-      {/* Legacy profile modal replaced by dropdown */}
-        </>
-      )}
     </div>
   );
 }

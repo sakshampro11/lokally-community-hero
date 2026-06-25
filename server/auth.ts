@@ -285,26 +285,40 @@ router.put("/me", authenticateToken as any, async (req: AuthenticatedRequest, re
 });
 
 // GET /api/auth/leaderboard
-router.get("/leaderboard", async (_req: any, res: Response) => {
+router.get("/leaderboard", authenticateToken as any, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // Get current user to know their role
+    const curUserDoc = await getDoc(doc(db, "users", userId));
+    if (!curUserDoc.exists()) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const currentUserRole = curUserDoc.data().role || "citizen";
+
     const usersRef = collection(db, "users");
     const snapshot = await getDocs(usersRef);
-    const list = snapshot.docs.map((doc) => {
-      const data = doc.data() || {};
-      const normalized = normalizeUserGamification(data);
-      return {
-        id: doc.id,
-        name: data.name || "Anonymous Citizen",
-        email: data.email || "",
-        role: data.role || "citizen",
-        points: normalized.points,
-        badges: normalized.badges,
-        reportsCount: normalized.reportsCount,
-        verificationsCount: normalized.verificationsCount,
-        resolvedReportsCount: normalized.resolvedReportsCount,
-        resolverIssuesResolved: normalized.resolverIssuesResolved,
-      };
-    });
+    const list = snapshot.docs
+      .map((doc) => {
+        const data = doc.data() || {};
+        const normalized = normalizeUserGamification(data);
+        return {
+          id: doc.id,
+          name: data.name || "Anonymous Citizen",
+          email: data.email || "",
+          role: data.role || "citizen",
+          points: normalized.points,
+          badges: normalized.badges,
+          reportsCount: normalized.reportsCount,
+          verificationsCount: normalized.verificationsCount,
+          resolvedReportsCount: normalized.resolvedReportsCount,
+          resolverIssuesResolved: normalized.resolverIssuesResolved,
+        };
+      })
+      .filter((u) => u.role === currentUserRole);
 
     // Sort by points descending
     list.sort((a, b) => b.points - a.points);

@@ -41,6 +41,12 @@ export default function ResolverDashboardView({
   const [activeTab, setActiveTab] = useState<"dashboard" | "leaderboard">("dashboard");
   const [resolverFeedTab, setResolverFeedTab] = useState<"open" | "resolved">("open");
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
+  const [showMoreDetails, setShowMoreDetails] = useState<boolean>(false);
+
+  // Reset showMoreDetails when active issue changes
+  useEffect(() => {
+    setShowMoreDetails(false);
+  }, [activeIssue?.id]);
 
   // Status transition states
   const [resolverStatus, setResolverStatus] = useState<string>("In Progress");
@@ -177,7 +183,7 @@ export default function ResolverDashboardView({
       <main className="max-w-7xl mx-auto px-6 py-10 sm:px-12">
         {activeTab === "leaderboard" ? (
           /* Render Leaderboard Tab */
-          <LeaderboardView />
+          <LeaderboardView currentUserRole={user.role} />
         ) : (
           /* Render Dashboard Split Screen (Matches Image 8 exactly) */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -230,6 +236,50 @@ export default function ResolverDashboardView({
                     </div>
                   </div>
                 </div>
+
+                {/* Horizontal Scrolling Issue List */}
+                {filteredIssues.length > 0 ? (
+                  <div className="flex gap-3 overflow-x-auto pb-2 mt-5 pt-5 border-t border-slate-100">
+                    {filteredIssues.map((iss) => {
+                      const isActive = activeIssue?.id === iss.id;
+                      return (
+                        <button
+                          key={iss.id}
+                          onClick={() => setActiveIssue(iss)}
+                          className={`shrink-0 text-left w-64 rounded-2xl p-4 border transition-all cursor-pointer ${
+                            isActive
+                              ? "bg-blue-50/60 border-blue-300 shadow-xs"
+                              : "bg-white border-slate-200 hover:border-slate-300"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start gap-2 mb-1.5">
+                            <span className="rounded-md bg-slate-50 border border-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide truncate max-w-[100px]">
+                              {iss.issueType}
+                            </span>
+                            <span className={`rounded-md px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wide shrink-0 ${
+                              iss.status === "Resolved"
+                                ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                                : "bg-amber-50 text-amber-600 border border-amber-100"
+                            }`}>
+                              {iss.status}
+                            </span>
+                          </div>
+                          <h4 className="font-display font-extrabold text-xs text-slate-900 truncate">
+                            {iss.title}
+                          </h4>
+                          <p className="text-[10px] font-semibold text-slate-400 truncate mt-1">
+                            {iss.address || "No address provided"}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs font-semibold text-slate-400 italic mt-5 pt-5 border-t border-slate-100">
+                    No concerns found in this tab.
+                  </p>
+                )}
+
               </div>
 
               {/* BOTTOM CARD: ACTIVE DETAILED SELECTED ISSUE */}
@@ -238,8 +288,8 @@ export default function ResolverDashboardView({
                   
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
                     
-                    {/* LEFT COLUMN: ISSUE DETAILS (7/12 cols) */}
-                    <div className="md:col-span-7 space-y-4">
+                    {/* LEFT COLUMN: ISSUE DETAILS (dynamic width) */}
+                    <div className={`${(activeIssue.status === "Resolved" && !showMoreDetails) ? "md:col-span-12" : "md:col-span-7"} space-y-4`}>
                       
                       {/* Badges and Date */}
                       <div className="flex justify-between items-start gap-4">
