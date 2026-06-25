@@ -1,5 +1,6 @@
 import React, { FormEvent } from "react";
 import { ArrowLeft, Check, Shield } from "lucide-react";
+import { BrandLogo } from "./BrandLogo";
 
 interface CitizenAuthViewProps {
   authTab: "login" | "register";
@@ -42,11 +43,10 @@ export default function CitizenAuthView({
           <div>
             <button
               onClick={onBackToLanding}
-              className="group flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-display text-sm font-black tracking-tight"
+              className="group flex items-center gap-3 text-slate-900 hover:text-blue-600 font-display text-sm font-black tracking-tight"
             >
-              <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
-              <span>Lokally</span>
-              <span className="h-1.5 w-1.5 rounded-full bg-blue-600 self-end mb-1"></span>
+              <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform text-blue-600" />
+              <BrandLogo size="sm" />
             </button>
           </div>
 

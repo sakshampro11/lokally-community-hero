@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, FormEvent, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { BrandLogo } from "./components/BrandLogo";
 import {
   MapPin,
   AlertTriangle,
@@ -1525,13 +1526,7 @@ export default function App() {
               {/* Left Logo */}
               <div className="flex items-center justify-start">
                 <div className="flex items-center gap-2 cursor-pointer select-none" onClick={() => setActiveTab("dashboard")}>
-                  <span className="font-display text-2xl font-extrabold tracking-tight text-blue-600">
-                    Lokally
-                  </span>
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
-                  </span>
+                  <BrandLogo size="md" />
                 </div>
               </div>
 

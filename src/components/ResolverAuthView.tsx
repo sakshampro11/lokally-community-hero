@@ -1,5 +1,6 @@
 import React, { FormEvent } from "react";
 import { ArrowLeft } from "lucide-react";
+import { BrandLogo } from "./BrandLogo";
 
 interface ResolverAuthViewProps {
   onBackToLanding: () => void;
@@ -27,14 +28,13 @@ export default function ResolverAuthView({
         
         {/* Back Link */}
         <div className="flex justify-between items-center">
-          <button
-            onClick={onBackToLanding}
-            className="group flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-display text-sm font-black tracking-tight"
-          >
-            <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
-            <span>Lokally</span>
-            <span className="h-1.5 w-1.5 rounded-full bg-blue-600 self-end mb-1"></span>
-          </button>
+            <button
+              onClick={onBackToLanding}
+              className="group flex items-center gap-3 text-slate-900 hover:text-blue-600 font-display text-sm font-black tracking-tight"
+            >
+              <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform text-blue-600" />
+              <BrandLogo size="sm" />
+            </button>
           
           <span className="text-[10px] font-extrabold tracking-widest text-slate-400 bg-slate-50 border border-slate-100 rounded-full px-2.5 py-1 uppercase">
             Resolver Auth

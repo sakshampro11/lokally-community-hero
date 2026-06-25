@@ -32,6 +32,10 @@ Civic problems — potholes, water leaks, broken streetlights, overflowing garba
 - 🏆 **Citizen-only gamification** — public leaderboard for citizens; a completely separate, private, resolver-only leaderboard that is never exposed on any citizen-facing page
 - 🌓 **Light and dark mode**
 - 🔗 **Share** — share a link directly to a specific issue so neighbors facing the same problem can find and corroborate it
+- 💾 **Resilient Multi-Tier Storage Backend** — implemented a bulletproof image/video upload system using Firebase Admin GCS bucket upload with automatic fallbacks to Web/Client SDK and safe local disk path writing (`/uploads/`) if cloud services are offline.
+- 🖼️ **Native Live Evidence Rendering** — refactored media rendering pathways across the main feed, map markers, duplicate popups, and resolver dashboards to fully support real-time user-captured evidence, bypassing standard fallback mocks.
+- 🗺️ **High-Fidelity Map Interactions** — optimized Leaflet map camera bounds fitting, integrated robust marker memory cleanup to prevent double-rendering errors, and added smoother popup animation triggers.
+- 🏷️ **Sleek Typographic Branding** — introduced a highly polished, code-inspired typographic wordmark layout featuring space-grotesk tracking-tighter adjustments, double slashes, and smooth transition properties.
 
 ---
 

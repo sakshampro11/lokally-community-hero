@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { BrandLogo } from "./BrandLogo";
 import {
   Shield,
   Sparkles,
@@ -32,15 +33,6 @@ import {
 interface LandingPageProps {
   onNavigate: (mode: "login" | "register" | "resolver-login") => void;
 }
-
-const LogoIcon = () => (
-  <div className="relative h-10 w-10 flex items-center justify-center rounded-2xl bg-gradient-to-tr from-slate-950 via-slate-900 to-indigo-950 shadow-md group shrink-0">
-    <div className="absolute inset-0.5 rounded-[14px] bg-slate-900 opacity-90 transition-all duration-300 group-hover:opacity-75" />
-    <div className="absolute h-6 w-6 rounded-full bg-blue-500/10 border border-blue-500/25 animate-ping" style={{ animationDuration: '3s' }} />
-    <MapPin size={16} className="text-blue-500 relative z-10 transition-transform duration-300 group-hover:scale-110 group-hover:text-indigo-400" />
-    <span className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-emerald-500 border border-slate-900 z-20 animate-pulse" />
-  </div>
-);
 
 const resolutionSteps = [
   {
@@ -152,15 +144,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               className="flex items-center gap-2 cursor-pointer select-none group"
               onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
             >
-              <LogoIcon />
-              <div className="flex flex-col">
-                <span className="font-display text-lg sm:text-2xl font-black text-slate-900 tracking-tight leading-none">
-                  Lokally
-                </span>
-                <span className="text-[7px] sm:text-[8px] font-black text-indigo-600 uppercase tracking-widest mt-0.5 sm:mt-1">
-                  Civic Hub
-                </span>
-              </div>
+              <BrandLogo size="md" />
             </div>
           </div>
 
@@ -831,11 +815,8 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       <footer className="bg-white border-t border-slate-150 py-16 mt-12">
         <div className="max-w-7xl mx-auto px-6 sm:px-12 flex flex-col md:flex-row items-center justify-between gap-8">
           {/* Logo */}
-          <div className="flex items-center gap-2.5 cursor-pointer select-none">
-            <LogoIcon />
-            <span className="font-display text-xl font-black text-slate-900 tracking-tight">
-              Lokally
-            </span>
+          <div className="flex items-center gap-2.5 cursor-pointer select-none" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+            <BrandLogo size="md" />
           </div>
 
           {/* Footer Links */}

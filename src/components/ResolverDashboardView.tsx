@@ -1,4 +1,5 @@
 import React, { useState, FormEvent, useEffect } from "react";
+import { BrandLogo } from "./BrandLogo";
 import {
   LogOut,
   MapPin,
@@ -262,10 +263,7 @@ export default function ResolverDashboardView({
           
           {/* Left: Logo and Portal Badge */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1">
-              <span className="font-display text-2xl font-black text-slate-900 tracking-tight">Lokally</span>
-              <span className="h-2.5 w-2.5 rounded-full bg-blue-600 mb-1.5 self-end"></span>
-            </div>
+            <BrandLogo size="md" />
             <div className="h-6 border-r border-slate-200"></div>
             <span className="bg-blue-50 text-blue-600 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider rounded-full border border-blue-100">
               Resolver Portal
