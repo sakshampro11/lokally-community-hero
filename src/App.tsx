@@ -111,6 +111,11 @@ export default function App() {
   const [aiLoading, setAiLoading] = useState<boolean>(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
+  // Duplicate detection states
+  const [duplicateIssue, setDuplicateIssue] = useState<any | null>(null);
+  const [showDuplicateModal, setShowDuplicateModal] = useState<boolean>(false);
+  const [checkingDuplicate, setCheckingDuplicate] = useState<boolean>(false);
+
   // New comment state
   const [commentText, setCommentText] = useState<string>("");
 
@@ -141,12 +146,46 @@ export default function App() {
   // Profile update modal states
   const [showProfileDropdown, setShowProfileDropdown] = useState<boolean>(false);
   const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
+  const [showMobileProfileDrawer, setShowMobileProfileDrawer] = useState<boolean>(false);
   const [profileForm, setProfileForm] = useState({
     name: "",
     address: "",
-    phone: ""
+    phone: "",
+    photoUrl: null as string | null
   });
   const [profileSaving, setProfileSaving] = useState<boolean>(false);
+
+  const handleProfilePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!token) return;
+
+    const formData = new FormData();
+    formData.append("photo", file);
+
+    try {
+      showToast("Uploading photo...");
+      const res = await fetch("/api/auth/upload-photo", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setProfileForm(prev => ({ ...prev, photoUrl: data.photoUrl }));
+        showToast("Photo uploaded successfully!");
+      } else {
+        const errData = await res.json();
+        showToast(errData.message || "Failed to upload photo", "error");
+      }
+    } catch (err) {
+      console.error("Error uploading profile photo:", err);
+      showToast("An error occurred during photo upload", "error");
+    }
+  };
 
   // Notification states
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState<boolean>(false);
@@ -169,9 +208,10 @@ export default function App() {
       setProfileForm({
         name: user.name || "",
         address: user.address || "",
-        phone: user.phone || ""
+        phone: user.phone || "",
+        photoUrl: user.photoUrl || null
       });
-      setShowProfileDropdown(true);
+      setShowProfileModal(true);
     }
   };
 
@@ -193,6 +233,7 @@ export default function App() {
         setUser(updatedUser);
         showToast("Profile updated successfully!");
         setShowProfileDropdown(false);
+        setShowProfileModal(false);
       } else {
         const errData = await res.json();
         showToast(errData.message || "Failed to update profile", "error");
@@ -589,8 +630,8 @@ export default function App() {
   };
 
   // Submit reported issue
-  const handleIssueSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleIssueSubmit = async (e: any, bypassCheck: boolean = false) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (!newIssue.address.trim() && (!newIssue.lat || !newIssue.lng)) {
       showToast("Please provide either a physical address or mark the location on the map.", "error");
       return;
@@ -616,6 +657,30 @@ export default function App() {
       formData.append("media", file);
     });
 
+    // Check for duplicates first, unless bypassed
+    if (!bypassCheck) {
+      setCheckingDuplicate(true);
+      try {
+        const checkRes = await fetch("/api/issues/check-duplicate", {
+          method: "POST",
+          body: formData,
+        });
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          if (checkData.duplicate) {
+            setDuplicateIssue(checkData.duplicate);
+            setShowDuplicateModal(true);
+            setCheckingDuplicate(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Duplicate check failed:", err);
+      } finally {
+        setCheckingDuplicate(false);
+      }
+    }
+
     try {
       const res = await fetch("/api/issues", {
         method: "POST",
@@ -639,10 +704,62 @@ export default function App() {
         setAiLoading(false);
         fetchIssues();
         fetchUserProfile();
+        showToast("Issue reported successfully!", "success");
+      } else {
+        showToast("Failed to submit issue.", "error");
       }
     } catch (err) {
       console.error("Failed to submit issue:", err);
+      showToast("Error submitting issue.", "error");
     }
+  };
+
+  const handleDuplicateCorroborate = async () => {
+    if (!duplicateIssue) return;
+    if (!token) {
+      showToast("Please sign in or register to corroborate this issue.", "info");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/issues/${duplicateIssue.id}/confirm`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setIssues((prev) => prev.map((iss) => (iss.id === duplicateIssue.id ? updated : iss)));
+        showToast("You have successfully corroborated this issue! Thank you.", "success");
+        setShowDuplicateModal(false);
+        setShowNewIssueModal(false);
+        setDuplicateIssue(null);
+        setNewIssue({
+          title: "",
+          summary: "",
+          description: "",
+          issueType: "",
+          priority: "Low",
+          address: "",
+          lat: "",
+          lng: ""
+        });
+        setSelectedFiles([]);
+        setGeoStatus({ status: "idle", message: "" });
+        setAiError(null);
+        setAiLoading(false);
+        fetchUserProfile();
+      } else {
+        const errData = await res.json();
+        showToast(errData.message || "Corroboration failed", "error");
+      }
+    } catch (err) {
+      console.error("Failed to corroborate issue:", err);
+      showToast("Network error corroborating issue.", "error");
+    }
+  };
+
+  const handleDuplicateCancel = (e: any) => {
+    setShowDuplicateModal(false);
+    handleIssueSubmit(e, true);
   };
 
   // Upvote locally/instantly
@@ -994,6 +1111,265 @@ export default function App() {
     );
   };
 
+  const renderRightPanel = (isMobileDrawer = false) => {
+    if (!user) return null;
+
+    const handleEditProfileClick = () => {
+      if (isMobileDrawer) {
+        setShowMobileProfileDrawer(false);
+      }
+      openProfileModal();
+    };
+
+    const handleIssueClick = (iss: any) => {
+      if (isMobileDrawer) {
+        setShowMobileProfileDrawer(false);
+      }
+      setActiveIssue(iss);
+      setActiveIssueTab("details");
+    };
+
+    return (
+      <div className="space-y-6">
+        {/* Profile Card */}
+        <div className="overflow-hidden rounded-3xl border border-slate-150 bg-white shadow-sm">
+          <div className="h-20 bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4"></div>
+          <div className="px-6 pb-6 pt-3 relative">
+            <div
+              onClick={handleEditProfileClick}
+              className="absolute -top-10 left-6 flex h-16 w-16 items-center justify-center rounded-2xl border-4 border-white bg-blue-50 font-display text-xl font-bold text-blue-600 shadow-md cursor-pointer hover:border-blue-100 hover:scale-105 transition overflow-hidden"
+              title="Click to Edit Profile"
+            >
+              {user.photoUrl ? (
+                <img src={user.photoUrl} className="h-full w-full object-cover" alt={user.name} referrerPolicy="no-referrer" />
+              ) : (
+                user.name.charAt(0).toUpperCase()
+              )}
+            </div>
+            <div className="h-6"></div>
+            <div className="flex items-center justify-between gap-2">
+              <h3
+                onClick={handleEditProfileClick}
+                className="font-display text-xl font-extrabold tracking-tight text-slate-900 leading-snug cursor-pointer hover:text-blue-600 transition truncate max-w-[150px] xs:max-w-[200px]"
+                title="Click to Edit Profile"
+              >
+                {user.name}
+              </h3>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={handleEditProfileClick}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
+                >
+                  Edit Profile
+                </button>
+                <span className="text-slate-300">|</span>
+                <button
+                  onClick={() => {
+                    if (isMobileDrawer) {
+                      setShowMobileProfileDrawer(false);
+                    }
+                    handleLogout();
+                  }}
+                  className="text-xs font-bold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+            <div className="mt-1 flex items-center gap-1.5 text-xs font-bold text-slate-400">
+              <Shield size={13} className="text-slate-300" />
+              <span>
+                {user.role === "resolver" ? "Verified Service Resolver" : "Verified Civic Citizen"}
+              </span>
+            </div>
+
+            {/* Gamer stats */}
+            {user.role !== "resolver" && (
+              <div className="mt-6 border-t border-slate-100 pt-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Your Points
+                  </span>
+                  <span className="flex items-center gap-1 rounded-full border border-amber-100 bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-700">
+                    <Award size={12} />
+                    {user.points} XP
+                  </span>
+                </div>
+
+                {/* Earned Badges */}
+                <div className="mt-4">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Earned Badges
+                  </span>
+                  {!user.badges || user.badges.length === 0 ? (
+                    <p className="mt-1.5 text-xs font-medium text-slate-400">
+                      No badges yet. Start reporting and verifying issues to earn awards!
+                    </p>
+                  ) : (
+                    <div className="mt-2.5 flex flex-wrap gap-1.5">
+                      {user.badges.map((b) => (
+                        <span
+                          key={b}
+                          className="inline-flex items-center gap-1 rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-0.5 text-[10px] font-bold text-indigo-700"
+                        >
+                          <Award size={10} />
+                          {b}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Resolver stats */}
+            {user.role === "resolver" && (
+              <div className="mt-6 border-t border-slate-100 pt-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Total Resolved
+                  </span>
+                  <span className="flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
+                    <CheckCircle size={12} />
+                    {user.resolverIssuesResolved || 0} Resolved
+                  </span>
+                </div>
+
+                {/* Resolver Badges */}
+                <div className="mt-4">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Operational Badges
+                  </span>
+                  {!user.badges || user.badges.length === 0 ? (
+                    <p className="mt-1.5 text-xs font-medium text-slate-400">
+                      No operational badges yet. Keep resolving community issues!
+                    </p>
+                  ) : (
+                    <div className="mt-2.5 flex flex-wrap gap-1.5">
+                      {user.badges.map((b) => (
+                        <span
+                          key={b}
+                          className="inline-flex items-center gap-1 rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-0.5 text-[10px] font-bold text-indigo-700"
+                        >
+                          <Award size={10} />
+                          {b}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Your Reports / Issues list */}
+        {user.role !== "resolver" && (
+          <div className="rounded-3xl border border-slate-150 bg-white p-6 shadow-sm">
+            <h4 className="font-display text-lg font-extrabold text-slate-950 mb-4 flex items-center gap-1.5">
+              <FileText size={18} className="text-blue-500" />
+              <span>Your Reports ({myReports.length})</span>
+            </h4>
+            {myReports.length === 0 ? (
+              <p className="text-xs font-medium text-slate-400">
+                You haven't reported any civic issues yet.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {myReports.slice(0, 3).map((iss) => (
+                  <div
+                    key={iss.id}
+                    onClick={() => handleIssueClick(iss)}
+                    className="group flex items-center justify-between rounded-xl border border-slate-50 bg-slate-50/50 p-3 hover:bg-slate-50 hover:border-slate-150 cursor-pointer transition duration-200"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-bold text-slate-800 group-hover:text-blue-600 transition">
+                        {iss.title}
+                      </p>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+                        {iss.status}
+                      </span>
+                    </div>
+                    <ChevronRight size={14} className="text-slate-300 group-hover:text-blue-500 transition" />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Urgent Issues nearby */}
+        <div className="rounded-3xl border border-slate-150 bg-white p-6 shadow-sm">
+          <h4 className="font-display text-lg font-extrabold text-slate-950 mb-4 flex items-center gap-1.5">
+            <AlertTriangle size={18} className="text-rose-500" />
+            <span>Urgent Concerns ({nearbyHighPriority.length})</span>
+          </h4>
+          {nearbyHighPriority.length === 0 ? (
+            <p className="text-xs font-medium text-slate-400">
+              No urgent concerns reported in the community.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {nearbyHighPriority.slice(0, 3).map((iss) => (
+                <div
+                  key={iss.id}
+                  onClick={() => handleIssueClick(iss)}
+                  className="group flex items-center justify-between rounded-xl border border-slate-50 bg-slate-50/50 p-3 hover:bg-slate-50 hover:border-slate-150 cursor-pointer transition duration-200"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-bold text-slate-800 group-hover:text-rose-600 transition">
+                      {iss.title}
+                    </p>
+                    <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wide">
+                      {iss.issueType}
+                    </span>
+                  </div>
+                  <ChevronRight size={14} className="text-slate-300 group-hover:text-rose-500 transition" />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Refer Neighbors Card */}
+        {user.role !== "resolver" && (
+          <div className="rounded-3xl border border-blue-100 bg-blue-50/30 p-6 shadow-sm">
+            <h4 className="font-display text-base font-extrabold text-blue-950 mb-2 flex items-center gap-1.5">
+              <Gift size={18} className="text-blue-600 animate-pulse" />
+              <span>Refer & Earn XP 🎁</span>
+            </h4>
+            <p className="text-xs font-medium text-slate-500 leading-relaxed mb-4">
+              Invite neighbors to Lokally! They get <span className="font-bold text-blue-600">5 XP</span> and you earn <span className="font-bold text-blue-600">10 XP</span> when they join.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                readOnly
+                value={`${window.location.origin}/?ref=${user.email}`}
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 focus:outline-hidden"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const link = `${window.location.origin}/?ref=${encodeURIComponent(user?.email || "")}`;
+                  navigator.clipboard.writeText(link);
+                  setCopiedReferral(true);
+                  showToast("Referral link copied to clipboard!", "success");
+                  setTimeout(() => setCopiedReferral(false), 2000);
+                }}
+                className={`rounded-xl px-4 py-2 text-xs font-bold text-white transition ${
+                  copiedReferral ? "bg-emerald-600" : "bg-blue-600 hover:bg-blue-700"
+                }`}
+              >
+                {copiedReferral ? "Copied" : "Copy"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 antialiased selection:bg-blue-100 selection:text-blue-900">
       {/* Toast Banner notification */}
@@ -1057,6 +1433,7 @@ export default function App() {
           onLogout={handleLogout}
           onPostComment={handlePostCommentFromResolver}
           onStatusUpdate={handleStatusUpdateFromResolver}
+          onEditProfile={openProfileModal}
         />
       ) : (
         <>
@@ -1143,7 +1520,7 @@ export default function App() {
                   </button>
 
                   {showNotificationsDropdown && (
-                    <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-slate-150 bg-white shadow-xl z-50 overflow-hidden">
+                    <div className="absolute right-0 mt-2 w-[calc(100vw-2.5rem)] sm:w-80 max-w-[320px] sm:max-w-none rounded-2xl border border-slate-150 bg-white shadow-xl z-50 overflow-hidden">
                       <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/50 px-4 py-3">
                         <span className="font-display text-xs font-bold text-slate-800">Real-time Notifications</span>
                         {unreadCount > 0 && (
@@ -1192,114 +1569,191 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Clickable Profile Settings & Dropdown */}
-                <div className="relative">
-                  <div
-                    onClick={() => {
-                      if (showProfileDropdown) {
-                        setShowProfileDropdown(false);
-                      } else {
-                        setProfileForm({
-                          name: user.name || "",
-                          address: user.address || "",
-                          phone: user.phone || ""
-                        });
-                        setShowProfileDropdown(true);
-                      }
-                    }}
-                    className="flex items-center gap-3 cursor-pointer group hover:opacity-85 transition"
-                    title="Click to View Profile"
-                  >
-                    <div className="hidden flex-col text-right sm:flex">
-                      <span className="text-sm font-bold text-slate-800 group-hover:text-blue-600 transition">{user.name}</span>
-                      <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                        {user.role === "resolver" ? "Verified Resolver" : "Verified Citizen"}
-                      </span>
+                {/* Profile Controls (Desktop & Mobile Adaptive) */}
+                <div className="flex items-center gap-3">
+                  {/* Clickable Profile Settings & Dropdown (Desktop/Tablet) */}
+                  <div className="hidden sm:block relative">
+                    <div
+                      onClick={() => {
+                        if (showProfileDropdown) {
+                          setShowProfileDropdown(false);
+                        } else {
+                          setProfileForm({
+                            name: user.name || "",
+                            address: user.address || "",
+                            phone: user.phone || "",
+                            photoUrl: user.photoUrl || null
+                          });
+                          setShowProfileDropdown(true);
+                        }
+                      }}
+                      className="flex items-center gap-3 cursor-pointer group hover:opacity-85 transition"
+                      title="Click to View Profile"
+                    >
+                      <div className="flex flex-col text-right">
+                        <span className="text-sm font-bold text-slate-800 group-hover:text-blue-600 transition">{user.name}</span>
+                        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                          {user.role === "resolver" ? "Verified Resolver" : "Verified Citizen"}
+                        </span>
+                      </div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 font-display text-sm font-bold text-blue-600 border border-blue-100 shadow-sm group-hover:border-blue-300 transition select-none overflow-hidden">
+                        {user.photoUrl ? (
+                          <img src={user.photoUrl} className="h-full w-full object-cover" alt={user.name} referrerPolicy="no-referrer" />
+                        ) : (
+                          user.name.charAt(0).toUpperCase()
+                        )}
+                      </div>
                     </div>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 font-display text-sm font-bold text-blue-600 border border-blue-100 shadow-sm group-hover:border-blue-300 transition select-none">
-                      {user.name.charAt(0).toUpperCase()}
-                    </div>
+
+                    {showProfileDropdown && (
+                      <div className="absolute right-0 mt-3 w-80 rounded-2xl border border-slate-150 bg-white p-5 shadow-2xl z-50">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3.5">
+                          <div>
+                            <h4 className="font-display text-sm font-extrabold text-slate-900">My Profile Settings</h4>
+                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                              {user.role === "resolver" ? "Verified Resolver" : "Verified Citizen"}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => setShowProfileDropdown(false)}
+                            className="rounded-lg p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-600 cursor-pointer"
+                            type="button"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+
+                        <form onSubmit={handleUpdateProfile} className="space-y-3">
+                          {/* Profile Photo Upload/Remove */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                              Profile Photo
+                            </label>
+                            <div className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-150">
+                              <div className="relative h-12 w-12 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                                {profileForm.photoUrl ? (
+                                  <img
+                                    src={profileForm.photoUrl}
+                                    className="h-full w-full object-cover"
+                                    alt="Preview"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  <span className="text-base font-bold text-slate-400">
+                                    {profileForm.name ? profileForm.name.charAt(0).toUpperCase() : "?"}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <div className="flex gap-1.5">
+                                  <label className="cursor-pointer rounded-lg bg-white hover:bg-slate-50 border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-700 transition">
+                                    Upload
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={handleProfilePhotoUpload}
+                                    />
+                                  </label>
+                                  {profileForm.photoUrl && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setProfileForm({ ...profileForm, photoUrl: null })}
+                                      className="rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-100 px-2 py-1 text-[10px] font-bold text-rose-600 transition"
+                                    >
+                                      Remove
+                                    </button>
+                                  )}
+                                </div>
+                                <span className="text-[8px] text-slate-400 font-medium">JPEG or PNG (not compulsory)</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                              Full Name
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={profileForm.name}
+                              onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 transition focus:border-blue-500 focus:outline-none"
+                              placeholder="Enter your full name"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                              Physical Address
+                            </label>
+                            <input
+                              type="text"
+                              value={profileForm.address}
+                              onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 transition focus:border-blue-500 focus:outline-none"
+                              placeholder="E.g., Sector 4, Block C, Apt 12"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                              Phone Number
+                            </label>
+                            <input
+                              type="tel"
+                              value={profileForm.phone}
+                              onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 transition focus:border-blue-500 focus:outline-none"
+                              placeholder="E.g., +1 (555) 019-2834"
+                            />
+                          </div>
+
+                          <div className="pt-3.5 flex items-center justify-between gap-3 border-t border-slate-100 mt-4">
+                            <button
+                              type="button"
+                              onClick={handleLogout}
+                              className="flex items-center gap-1.5 rounded-xl border border-rose-100 bg-rose-50/50 hover:bg-rose-50 text-rose-600 px-3.5 py-2 text-xs font-bold transition cursor-pointer"
+                            >
+                              <LogOut size={13} />
+                              <span>Logout</span>
+                            </button>
+
+                            <button
+                              type="submit"
+                              disabled={profileSaving}
+                              className="rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-bold text-white transition disabled:opacity-50 cursor-pointer shadow-xs"
+                            >
+                              {profileSaving ? "Saving..." : "Save Settings"}
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    )}
                   </div>
 
-                  {showProfileDropdown && (
-                    <div className="absolute right-0 mt-3 w-80 rounded-2xl border border-slate-150 bg-white p-5 shadow-2xl z-50">
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3.5">
-                        <div>
-                          <h4 className="font-display text-sm font-extrabold text-slate-900">My Profile Settings</h4>
-                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                            {user.role === "resolver" ? "Verified Resolver" : "Verified Citizen"}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => setShowProfileDropdown(false)}
-                          className="rounded-lg p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-600 cursor-pointer"
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
-
-                      <form onSubmit={handleUpdateProfile} className="space-y-3">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                            Full Name
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={profileForm.name}
-                            onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 transition focus:border-blue-500 focus:outline-none"
-                            placeholder="Enter your full name"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                            Physical Address
-                          </label>
-                          <input
-                            type="text"
-                            value={profileForm.address}
-                            onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 transition focus:border-blue-500 focus:outline-none"
-                            placeholder="E.g., Sector 4, Block C, Apt 12"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                            Phone Number
-                          </label>
-                          <input
-                            type="tel"
-                            value={profileForm.phone}
-                            onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 transition focus:border-blue-500 focus:outline-none"
-                            placeholder="E.g., +1 (555) 019-2834"
-                          />
-                        </div>
-
-                        <div className="pt-3.5 flex items-center justify-between gap-3 border-t border-slate-100 mt-4">
-                          <button
-                            type="button"
-                            onClick={handleLogout}
-                            className="flex items-center gap-1.5 rounded-xl border border-rose-100 bg-rose-50/50 hover:bg-rose-50 text-rose-600 px-3.5 py-2 text-xs font-bold transition cursor-pointer"
-                          >
-                            <LogOut size={13} />
-                            <span>Logout</span>
-                          </button>
-
-                          <button
-                            type="submit"
-                            disabled={profileSaving}
-                            className="rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-bold text-white transition disabled:opacity-50 cursor-pointer shadow-xs"
-                          >
-                            {profileSaving ? "Saving..." : "Save Settings"}
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-                  )}
+                  {/* Clickable Profile Button (Mobile Drawer Trigger) */}
+                  <button
+                    onClick={() => {
+                      setProfileForm({
+                        name: user.name || "",
+                        address: user.address || "",
+                        phone: user.phone || "",
+                        photoUrl: user.photoUrl || null
+                      });
+                      setShowMobileProfileDrawer(true);
+                    }}
+                    className="block sm:hidden flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 font-display text-sm font-bold text-blue-600 border border-blue-100 shadow-sm select-none overflow-hidden cursor-pointer"
+                    title="Open Profile Drawer"
+                    type="button"
+                  >
+                    {user.photoUrl ? (
+                      <img src={user.photoUrl} className="h-full w-full object-cover" alt={user.name} referrerPolicy="no-referrer" />
+                    ) : (
+                      user.name.charAt(0).toUpperCase()
+                    )}
+                  </button>
                 </div>
               </div>
             </div>
@@ -1481,224 +1935,9 @@ export default function App() {
                 })()}
             </div>
 
-            {/* SIDEBAR COLUMNS (4 Cols) */}
-            <div className="lg:col-span-4 space-y-6">
-              {/* Profile Card */}
-              <div className="overflow-hidden rounded-3xl border border-slate-150 bg-white shadow-sm">
-                <div className="h-20 bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4"></div>
-                <div className="px-6 pb-6 pt-3 relative">
-                  <div
-                    onClick={openProfileModal}
-                    className="absolute -top-10 left-6 flex h-16 w-16 items-center justify-center rounded-2xl border-4 border-white bg-blue-50 font-display text-xl font-bold text-blue-600 shadow-md cursor-pointer hover:border-blue-100 hover:scale-105 transition"
-                    title="Click to Edit Profile"
-                  >
-                    {user.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="h-6"></div>
-                  <div className="flex items-center justify-between gap-2">
-                    <h3
-                      onClick={openProfileModal}
-                      className="font-display text-xl font-extrabold tracking-tight text-slate-900 leading-snug cursor-pointer hover:text-blue-600 transition"
-                      title="Click to Edit Profile"
-                    >
-                      {user.name}
-                    </h3>
-                    <button
-                      onClick={openProfileModal}
-                      className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
-                    >
-                      Edit Profile
-                    </button>
-                  </div>
-                  <div className="mt-1 flex items-center gap-1.5 text-xs font-bold text-slate-400">
-                    <Shield size={13} className="text-slate-300" />
-                    <span>
-                      {user.role === "resolver" ? "Verified Service Resolver" : "Verified Civic Citizen"}
-                    </span>
-                  </div>
-
-                  {/* Gamer stats */}
-                  {user.role !== "resolver" && (
-                    <div className="mt-6 border-t border-slate-100 pt-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                          Your Points
-                        </span>
-                        <span className="flex items-center gap-1 rounded-full border border-amber-100 bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-700">
-                          <Award size={12} />
-                          {user.points} XP
-                        </span>
-                      </div>
-
-                      {/* Earned Badges */}
-                      <div className="mt-4">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                          Earned Badges
-                        </span>
-                        {user.badges.length === 0 ? (
-                          <p className="mt-1.5 text-xs font-medium text-slate-400">
-                            No badges yet. Start reporting and verifying issues to earn awards!
-                          </p>
-                        ) : (
-                          <div className="mt-2.5 flex flex-wrap gap-1.5">
-                            {user.badges.map((b) => (
-                              <span
-                                key={b}
-                                className="inline-flex items-center gap-1 rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-0.5 text-[10px] font-bold text-indigo-700"
-                              >
-                                <Award size={10} />
-                                {b}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Resolver stats */}
-                  {user.role === "resolver" && (
-                    <div className="mt-6 border-t border-slate-100 pt-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                          Total Resolved
-                        </span>
-                        <span className="flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
-                          <CheckCircle size={12} />
-                          {user.resolverIssuesResolved || 0} Resolved
-                        </span>
-                      </div>
-
-                      {/* Resolver Badges */}
-                      <div className="mt-4">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                          Operational Badges
-                        </span>
-                        {!user.badges || user.badges.length === 0 ? (
-                          <p className="mt-1.5 text-xs font-medium text-slate-400">
-                            No operational badges yet. Keep resolving community issues!
-                          </p>
-                        ) : (
-                          <div className="mt-2.5 flex flex-wrap gap-1.5">
-                            {user.badges.map((b) => (
-                              <span
-                                key={b}
-                                className="inline-flex items-center gap-1 rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-0.5 text-[10px] font-bold text-indigo-700"
-                              >
-                                <Award size={10} />
-                                {b}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Your Reports / Issues list */}
-              {user.role !== "resolver" && (
-                <div className="rounded-3xl border border-slate-150 bg-white p-6 shadow-sm">
-                  <h4 className="font-display text-lg font-extrabold text-slate-950 mb-4 flex items-center gap-1.5">
-                    <FileText size={18} className="text-blue-500" />
-                    <span>Your Reports ({myReports.length})</span>
-                  </h4>
-                  {myReports.length === 0 ? (
-                    <p className="text-xs font-medium text-slate-400">
-                      You haven't reported any civic issues yet.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {myReports.slice(0, 3).map((iss) => (
-                        <div
-                          key={iss.id}
-                          onClick={() => setActiveIssue(iss)}
-                          className="group flex items-center justify-between rounded-xl border border-slate-50 bg-slate-50/50 p-3 hover:bg-slate-50 hover:border-slate-150 cursor-pointer transition duration-200"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-bold text-slate-800 group-hover:text-blue-600 transition">
-                              {iss.title}
-                            </p>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
-                              {iss.status}
-                            </span>
-                          </div>
-                          <ChevronRight size={14} className="text-slate-300 group-hover:text-blue-500 transition" />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Urgent Issues nearby */}
-              <div className="rounded-3xl border border-slate-150 bg-white p-6 shadow-sm">
-                <h4 className="font-display text-lg font-extrabold text-slate-950 mb-4 flex items-center gap-1.5">
-                  <AlertTriangle size={18} className="text-rose-500" />
-                  <span>Urgent Concerns ({nearbyHighPriority.length})</span>
-                </h4>
-                {nearbyHighPriority.length === 0 ? (
-                  <p className="text-xs font-medium text-slate-400">
-                    No urgent concerns reported in the community.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {nearbyHighPriority.slice(0, 3).map((iss) => (
-                      <div
-                        key={iss.id}
-                        onClick={() => setActiveIssue(iss)}
-                        className="group flex items-center justify-between rounded-xl border border-slate-50 bg-slate-50/50 p-3 hover:bg-slate-50 hover:border-slate-150 cursor-pointer transition duration-200"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-bold text-slate-800 group-hover:text-rose-600 transition">
-                            {iss.title}
-                          </p>
-                          <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wide">
-                            {iss.issueType}
-                          </span>
-                        </div>
-                        <ChevronRight size={14} className="text-slate-300 group-hover:text-rose-500 transition" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Refer Neighbors Card */}
-              {user.role !== "resolver" && (
-                <div className="rounded-3xl border border-blue-100 bg-blue-50/30 p-6 shadow-sm">
-                  <h4 className="font-display text-base font-extrabold text-blue-950 mb-2 flex items-center gap-1.5">
-                    <Gift size={18} className="text-blue-600 animate-pulse" />
-                    <span>Refer & Earn XP 🎁</span>
-                  </h4>
-                  <p className="text-xs font-medium text-slate-500 leading-relaxed mb-4">
-                    Invite neighbors to Lokally! They get <span className="font-bold text-blue-600">5 XP</span> and you earn <span className="font-bold text-blue-600">10 XP</span> when they join.
-                  </p>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      readOnly
-                      value={`${window.location.origin}/?ref=${user.email}`}
-                      className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600 focus:outline-hidden"
-                    />
-                    <button
-                      onClick={() => {
-                        const link = `${window.location.origin}/?ref=${encodeURIComponent(user?.email || "")}`;
-                        navigator.clipboard.writeText(link);
-                        setCopiedReferral(true);
-                        showToast("Referral link copied to clipboard!", "success");
-                        setTimeout(() => setCopiedReferral(false), 2000);
-                      }}
-                      className={`rounded-xl px-4 py-2 text-xs font-bold text-white transition ${
-                        copiedReferral ? "bg-emerald-600" : "bg-blue-600 hover:bg-blue-700"
-                      }`}
-                    >
-                      {copiedReferral ? "Copied" : "Copy"}
-                    </button>
-                  </div>
-                </div>
-              )}
+            {/* SIDEBAR COLUMNS (4 Cols) - Desktop only (hidden on mobile) */}
+            <div className="hidden lg:block lg:col-span-4">
+              {renderRightPanel()}
             </div>
           </div>
         )}
@@ -1950,13 +2189,131 @@ export default function App() {
                     </button>
                     <button
                       type="submit"
-                      className="rounded-xl bg-blue-600 px-6 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700 active:scale-95"
+                      disabled={checkingDuplicate}
+                      className="rounded-xl bg-blue-600 px-6 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
-                      Report Issue
+                      {checkingDuplicate ? (
+                        <>
+                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          <span>AI Scanning Duplicates...</span>
+                        </>
+                      ) : (
+                        <span>Report Issue</span>
+                      )}
                     </button>
                   </div>
                 </form>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: DUPLICATE DETECTION WARNING */}
+      <AnimatePresence>
+        {showDuplicateModal && duplicateIssue && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-lg rounded-3xl border border-amber-200 bg-amber-50/30 p-6 shadow-2xl max-h-[90vh] overflow-y-auto sm:p-8 backdrop-blur-md"
+            >
+              <div className="bg-white rounded-2xl p-6 border border-amber-100 shadow-sm">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="rounded-full bg-amber-100 p-2 text-amber-600">
+                    <span className="text-xl">⚠️</span>
+                  </div>
+                  <div>
+                    <h3 className="font-display text-lg font-extrabold text-slate-900">
+                      Possible Duplicate Detected
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                      Our civic AI detected an active report nearby describing the same issue.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Existing Issue Card */}
+                <div className="rounded-2xl border border-slate-150 bg-slate-50 p-4 mb-4">
+                  <div className="flex gap-4">
+                    {duplicateIssue.mediaUrl && (
+                      <img
+                        src={duplicateIssue.mediaUrl}
+                        alt="Existing duplicate candidate"
+                        className="h-20 w-20 rounded-xl object-cover border border-slate-200 shrink-0 shadow-xs"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <span className="inline-block rounded-full bg-slate-200 px-2 py-0.5 text-[9px] font-bold text-slate-600 uppercase tracking-wide">
+                        Existing Active Report
+                      </span>
+                      <h4 className="font-display text-sm font-extrabold text-slate-900 mt-1 truncate">
+                        {duplicateIssue.title}
+                      </h4>
+                      <p className="text-xs text-slate-600 font-medium line-clamp-2 mt-1 leading-relaxed">
+                        {duplicateIssue.description}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Gemini AI Reason */}
+                {duplicateIssue.reason && (
+                  <div className="rounded-2xl bg-blue-50/50 border border-blue-100 p-4 mb-6">
+                    <span className="block text-[10px] font-extrabold text-blue-600 uppercase tracking-wider mb-1">
+                      AI Duplicate Analysis
+                    </span>
+                    <p className="text-xs font-semibold text-slate-700 leading-relaxed italic">
+                      "{duplicateIssue.reason}"
+                    </p>
+                  </div>
+                )}
+
+                {/* Buttons and Action Flow */}
+                <div className="space-y-3">
+                  {token ? (
+                    <button
+                      type="button"
+                      onClick={handleDuplicateCorroborate}
+                      className="w-full flex items-center justify-center gap-2 rounded-2xl bg-amber-500 px-6 py-3.5 font-display text-xs font-bold text-white shadow-lg shadow-amber-500/10 hover:bg-amber-600 transition active:scale-95 cursor-pointer"
+                    >
+                      <span>✨ Yes, same problem (Corroborate issue)</span>
+                    </button>
+                  ) : (
+                    <div className="text-center p-3 bg-slate-50 rounded-xl border border-slate-150">
+                      <p className="text-xs font-bold text-slate-500 mb-2">
+                        You must be signed in to corroborate this report.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          showToast("Please use the Sign In or Register buttons in the header to authenticate first.", "info");
+                        }}
+                        className="text-xs font-extrabold text-blue-600 hover:underline"
+                      >
+                        How to sign in?
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleDuplicateCancel}
+                    className="w-full rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 px-6 py-3.5 font-display text-xs font-bold text-slate-600 transition active:scale-95 cursor-pointer"
+                  >
+                    No, this is a different problem
+                  </button>
+                </div>
+
+                <div className="text-center mt-4">
+                  <p className="text-[10px] font-bold text-slate-400">
+                    {token 
+                      ? "Corroborating increments the community verification signal, helping prioritize this issue faster without cluttering the city feed."
+                      : "If you are sure this is a different issue, click the 'No' button above to submit normally."}
+                  </p>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}
@@ -2297,6 +2654,205 @@ export default function App() {
                 </button>
               </div>
             </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Profile Edit Modal */}
+      <AnimatePresence>
+        {showProfileModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowProfileModal(false)}
+              className="absolute inset-0 bg-slate-950/40 backdrop-blur-xs"
+            />
+
+            {/* Modal Content */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-md overflow-hidden rounded-3xl border border-slate-150 bg-white p-6 shadow-2xl z-10"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                <div>
+                  <h4 className="font-display text-base font-extrabold text-slate-900">My Profile Settings</h4>
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                    {user?.role === "resolver" ? "Verified Service Resolver" : "Verified Civic Citizen"}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowProfileModal(false)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600 cursor-pointer"
+                  type="button"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateProfile} className="space-y-4">
+                {/* Profile Photo */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    Profile Photo
+                  </label>
+                  <div className="flex items-center gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-150">
+                    <div className="relative h-12 w-12 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                      {profileForm.photoUrl ? (
+                        <img
+                          src={profileForm.photoUrl}
+                          className="h-full w-full object-cover"
+                          alt="Preview"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <span className="text-base font-bold text-slate-400">
+                          {profileForm.name ? profileForm.name.charAt(0).toUpperCase() : "?"}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex gap-1.5">
+                        <label className="cursor-pointer rounded-lg bg-white hover:bg-slate-50 border border-slate-200 px-2.5 py-1 text-[10px] font-bold text-slate-700 transition">
+                          Upload
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleProfilePhotoUpload}
+                          />
+                        </label>
+                        {profileForm.photoUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setProfileForm({ ...profileForm, photoUrl: null })}
+                            className="rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-100 px-2.5 py-1 text-[10px] font-bold text-rose-600 transition"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      <span className="text-[8px] text-slate-400 font-semibold">JPEG or PNG (not compulsory)</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={profileForm.name}
+                    onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 transition focus:border-blue-500 focus:outline-none"
+                    placeholder="Enter your full name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Physical Address
+                  </label>
+                  <input
+                    type="text"
+                    value={profileForm.address}
+                    onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 transition focus:border-blue-500 focus:outline-none"
+                    placeholder="E.g., Sector 4, Block C, Apt 12"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={profileForm.phone}
+                    onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 transition focus:border-blue-500 focus:outline-none"
+                    placeholder="E.g., +1 (555) 019-2834"
+                  />
+                </div>
+
+                <div className="pt-3.5 flex items-center justify-between gap-3 border-t border-slate-100 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowProfileModal(false);
+                      handleLogout();
+                    }}
+                    className="flex items-center gap-1.5 rounded-xl border border-rose-100 bg-rose-50/50 hover:bg-rose-50 text-rose-600 px-3.5 py-2 text-xs font-bold transition cursor-pointer"
+                  >
+                    <LogOut size={13} />
+                    <span>Logout</span>
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={profileSaving}
+                    className="rounded-xl bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-bold text-white transition disabled:opacity-50 cursor-pointer shadow-xs"
+                  >
+                    {profileSaving ? "Saving..." : "Save Settings"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MOBILE DRAWER: PROFILE, YOUR REPORTS & URGENT CONCERNS */}
+      <AnimatePresence>
+        {showMobileProfileDrawer && (
+          <div className="fixed inset-0 z-50 overflow-hidden lg:hidden">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowMobileProfileDrawer(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
+            />
+
+            {/* Slider container */}
+            <div className="absolute inset-y-0 right-0 max-w-full flex">
+              <motion.div
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 220 }}
+                className="w-screen max-w-md bg-slate-50 shadow-2xl flex flex-col h-full border-l border-slate-200"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-5 border-b border-slate-150 bg-white shadow-xs">
+                  <div>
+                    <h3 className="font-display text-lg font-extrabold text-slate-950">My Profile & Reports</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Quick overview
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowMobileProfileDrawer(false)}
+                    className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
+                    type="button"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                {/* Body (Scrollable) */}
+                <div className="flex-1 overflow-y-auto px-6 py-6">
+                  {renderRightPanel(true)}
+                </div>
+              </motion.div>
+            </div>
           </div>
         )}
       </AnimatePresence>

@@ -5,6 +5,7 @@ import { authenticateToken, AuthenticatedRequest } from "./middleware";
 import { upload } from "./upload";
 import { GoogleGenAI, Type } from "@google/genai";
 import * as fs from "fs";
+import * as path from "path";
 
 const router = Router();
 
@@ -234,6 +235,208 @@ Please extract and return a JSON object with the following fields:
     return res.status(500).json({ message: "Error analyzing issue with AI", error: error.message });
   } finally {
     // Always clean up temporary uploads for this analysis call to avoid leaking disk space
+    if (req.files && Array.isArray(req.files)) {
+      for (const file of req.files) {
+        try {
+          if (fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+        } catch (err) {
+          console.error("Failed to delete temp file:", file.path, err);
+        }
+      }
+    }
+  }
+});
+
+// Helper to calculate distance in meters using Haversine formula
+function getDistanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000; // Earth's radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// POST /api/issues/check-duplicate - Check if a new report is a likely duplicate of an existing unresolved issue
+router.post("/check-duplicate", upload.array("media", 5), async (req: any, res: Response) => {
+  try {
+    const { lat, lng, issueType, title, description } = req.body;
+
+    if (!lat || !lng || !issueType) {
+      return res.status(400).json({ message: "Latitude, longitude, and issueType are required to check duplicates." });
+    }
+
+    const newLat = parseFloat(lat);
+    const newLng = parseFloat(lng);
+
+    // Query all issues from Firestore and filter for unresolved ones nearby of the same category
+    const q = query(collection(db, "issues"));
+    const snapshot = await getDocs(q);
+
+    const candidates: any[] = [];
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      if (data.status === "Resolved") continue;
+
+      // Match category/issueType
+      if (data.issueType !== issueType) continue;
+
+      // Calculate distance
+      const itemLat = data.location?.lat;
+      const itemLng = data.location?.lng;
+      if (itemLat == null || itemLng == null) continue;
+
+      const distance = getDistanceInMeters(newLat, newLng, itemLat, itemLng);
+      // within 50 meters
+      if (distance <= 50) {
+        candidates.push({ id: doc.id, ...data });
+      }
+    }
+
+    if (candidates.length === 0) {
+      return res.json({ duplicate: null });
+    }
+
+    // Prepare Gemini payload
+    if (!process.env.GEMINI_API_KEY) {
+      return res.json({ duplicate: null });
+    }
+
+    const prompt = `You are an AI assistant for a civic reporting system.
+We are checking if a newly submitted issue is a duplicate of any existing nearby issues.
+
+New Issue Details:
+Title: "${title || ""}"
+Description: "${description || ""}"
+Category: "${issueType || ""}"
+
+Existing Nearby Issues:
+${candidates.map((c, idx) => `
+Candidate #${idx + 1}:
+ID: "${c.id}"
+Title: "${c.title}"
+Description: "${c.description}"
+`).join("\n")}
+
+Please compare the new issue's description (and optional photo) against each candidate's description (and optional photo).
+Determine if the new issue describes the exact same real-world occurrence/problem (e.g., the same pothole, the same broken streetlight, the same water leakage) as one of the candidates.
+Note: A pothole and a broken streetlight at the same location are NOT duplicates. They must describe the exact same physical problem.
+
+Return a JSON object with:
+- "isDuplicate": boolean (true if a duplicate is found, false otherwise)
+- "duplicateId": string or null (the ID of the matching candidate issue, if isDuplicate is true)
+- "reason": string (brief explanation of why they match or do not match)`;
+
+    const parts: any[] = [{ text: prompt }];
+
+    // Attach new issue's first uploaded image (if any)
+    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      const file = req.files[0] as Express.Multer.File;
+      if (file.mimetype.startsWith("image/")) {
+        const fileData = fs.readFileSync(file.path);
+        parts.push({ text: "Here is the photo of the newly reported issue:" });
+        parts.push({
+          inlineData: {
+            data: fileData.toString("base64"),
+            mimeType: file.mimetype
+          }
+        });
+      }
+    }
+
+    // Attach candidate photos
+    candidates.forEach((c, idx) => {
+      if (c.mediaUrl) {
+        const filename = c.mediaUrl.replace("/uploads/", "");
+        const filepath = path.join(process.cwd(), "uploads", filename);
+        if (fs.existsSync(filepath)) {
+          const fileData = fs.readFileSync(filepath);
+          const ext = path.extname(filepath).toLowerCase();
+          let mimeType = "image/jpeg";
+          if (ext === ".png") mimeType = "image/png";
+          else if (ext === ".webp") mimeType = "image/webp";
+          
+          parts.push({ text: `Here is the photo of Candidate #${idx + 1} (ID: "${c.id}"):` });
+          parts.push({
+            inlineData: {
+              data: fileData.toString("base64"),
+              mimeType
+            }
+          });
+        }
+      }
+    });
+
+    const ai = getGeminiClient();
+    const modelsToTry = [
+      "gemini-3.5-flash",
+      "gemini-3.1-flash-lite",
+      "gemini-flash-latest"
+    ];
+    let response: any = null;
+    let lastError: any = null;
+
+    for (const modelName of modelsToTry) {
+      try {
+        response = await ai.models.generateContent({
+          model: modelName,
+          contents: { parts },
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                isDuplicate: { type: Type.BOOLEAN },
+                duplicateId: { type: Type.STRING },
+                reason: { type: Type.STRING }
+              },
+              required: ["isDuplicate", "duplicateId", "reason"]
+            }
+          }
+        });
+        if (response) break;
+      } catch (err: any) {
+        console.warn(`Duplicate check model ${modelName} failed:`, err.message || err);
+        lastError = err;
+      }
+    }
+
+    if (!response) {
+      console.error("All models failed during duplicate check. Proceeding with no duplicate.");
+      return res.json({ duplicate: null });
+    }
+
+    const responseText = response.text || "";
+    const result = JSON.parse(responseText.trim());
+
+    if (result.isDuplicate && result.duplicateId) {
+      const match = candidates.find((c) => c.id === result.duplicateId);
+      if (match) {
+        return res.json({
+          duplicate: {
+            id: match.id,
+            title: match.title,
+            description: match.description,
+            mediaUrl: match.mediaUrl,
+            reason: result.reason
+          }
+        });
+      }
+    }
+
+    return res.json({ duplicate: null });
+
+  } catch (error: any) {
+    console.error("Error during duplicate check:", error);
+    return res.json({ duplicate: null });
+  } finally {
     if (req.files && Array.isArray(req.files)) {
       for (const file of req.files) {
         try {
@@ -566,16 +769,22 @@ router.post("/:id/confirm", authenticateToken as any, async (req: AuthenticatedR
     };
 
     // Auto-verify if confirms >= 3
-    if (newConfirmations >= 3 && data.status !== "Verified" && data.status !== "Resolved" && data.status !== "In Progress") {
-      updates.status = "Verified";
-      updates.statusHistory = [
-        ...(data.statusHistory || []),
-        {
-          status: "Verified",
-          timestamp: new Date().toISOString(),
-          note: "Community verified (3+ confirmations).",
-        },
-      ];
+    if (newConfirmations >= 3) {
+      if (data.status !== "Verified" && data.status !== "Resolved" && data.status !== "In Progress") {
+        updates.status = "Verified";
+        updates.statusHistory = [
+          ...(data.statusHistory || []),
+          {
+            status: "Verified",
+            timestamp: new Date().toISOString(),
+            note: "Community verified (3+ confirmations).",
+          },
+        ];
+      }
+      // Visibly increase priority/urgency if threshold reached (start with 3)
+      if (data.priority !== "High") {
+        updates.priority = "High";
+      }
     }
 
     await updateDoc(docRef, updates);

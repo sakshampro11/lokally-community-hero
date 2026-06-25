@@ -144,20 +144,20 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-blue-100 selection:text-blue-900 overflow-x-hidden">
       {/* HEADER */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100 px-6 py-4 sm:px-12 transition-all">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-3 sm:px-12 transition-all">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
           {/* Logo */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <div
-              className="flex items-center gap-2.5 cursor-pointer select-none group"
+              className="flex items-center gap-2 cursor-pointer select-none group"
               onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
             >
               <LogoIcon />
               <div className="flex flex-col">
-                <span className="font-display text-2xl font-black text-slate-900 tracking-tight leading-none">
+                <span className="font-display text-lg sm:text-2xl font-black text-slate-900 tracking-tight leading-none">
                   Lokally
                 </span>
-                <span className="text-[8px] font-black text-indigo-600 uppercase tracking-widest mt-1">
+                <span className="text-[7px] sm:text-[8px] font-black text-indigo-600 uppercase tracking-widest mt-0.5 sm:mt-1">
                   Civic Hub
                 </span>
               </div>
@@ -178,16 +178,16 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           </nav>
 
           {/* CTAs */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               onClick={() => onNavigate("login")}
-              className="text-xs font-bold uppercase tracking-wider text-slate-600 hover:text-blue-600 transition px-3 py-2"
+              className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-600 hover:text-blue-600 transition px-2 py-1.5 sm:px-3 sm:py-2"
             >
               Sign In
             </button>
             <button
               onClick={() => setShowReferModal(true)}
-              className="rounded-xl bg-slate-900 hover:bg-slate-800 px-5 py-2.5 text-xs font-bold text-white shadow-md transition-all active:scale-[0.98]"
+              className="rounded-xl bg-slate-900 hover:bg-slate-800 px-3 py-2 sm:px-5 sm:py-2.5 text-[11px] sm:text-xs font-bold text-white shadow-md transition-all active:scale-[0.98]"
             >
               Join Your Neighbors
             </button>

@@ -7,6 +7,7 @@ export interface User {
   role: "citizen" | "resolver";
   points: number;
   badges: string[];
+  photoUrl?: string | null;
   reportsCount: number;
   verificationsCount: number;
   resolvedReportsCount: number;

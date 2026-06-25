@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { collection, doc, getDoc, getDocs, query, where, limit, addDoc, updateDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import { authenticateToken, AuthenticatedRequest } from "./middleware";
+import { upload } from "./upload";
 
 const router = Router();
 
@@ -135,6 +136,7 @@ router.post("/register", async (req: any, res: Response) => {
         address: newUser.address,
         role: "citizen",
         points: newUser.points,
+        photoUrl: null,
         badges: [],
         reportsCount: 0,
         verificationsCount: 0,
@@ -184,6 +186,7 @@ router.post("/login", async (req: any, res: Response) => {
         address: user.address || null,
         role: user.role || "citizen",
         points: normalized.points,
+        photoUrl: user.photoUrl || null,
         badges: normalized.badges,
         reportsCount: normalized.reportsCount,
         verificationsCount: normalized.verificationsCount,
@@ -223,6 +226,7 @@ router.get("/me", authenticateToken as any, async (req: AuthenticatedRequest, re
       address: user.address || null,
       role: user.role || "citizen",
       points: normalized.points,
+      photoUrl: user.photoUrl || null,
       badges: normalized.badges,
       reportsCount: normalized.reportsCount,
       verificationsCount: normalized.verificationsCount,
@@ -243,7 +247,7 @@ router.put("/me", authenticateToken as any, async (req: AuthenticatedRequest, re
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const { name, phone, address } = req.body;
+    const { name, phone, address, photoUrl } = req.body;
     const updates: any = {
       updatedAt: new Date().toISOString(),
     };
@@ -251,6 +255,7 @@ router.put("/me", authenticateToken as any, async (req: AuthenticatedRequest, re
     if (typeof name === "string") updates.name = name.trim() || null;
     if (typeof phone === "string") updates.phone = phone.trim() || null;
     if (typeof address === "string") updates.address = address.trim() || null;
+    if (photoUrl === null || typeof photoUrl === "string") updates.photoUrl = photoUrl;
 
     const userDocRef = doc(db, "users", userId);
     const userDoc = await getDoc(userDocRef);
@@ -272,6 +277,7 @@ router.put("/me", authenticateToken as any, async (req: AuthenticatedRequest, re
       address: updated.address || null,
       role: updated.role || "citizen",
       points: normalized.points,
+      photoUrl: updated.photoUrl || null,
       badges: normalized.badges,
       reportsCount: normalized.reportsCount,
       verificationsCount: normalized.verificationsCount,
@@ -281,6 +287,26 @@ router.put("/me", authenticateToken as any, async (req: AuthenticatedRequest, re
   } catch (error: any) {
     console.error("Error in updating profile:", error);
     return res.status(500).json({ message: "Error updating profile", error: error.message });
+  }
+});
+
+// POST /api/auth/upload-photo
+router.post("/upload-photo", authenticateToken as any, upload.single("photo"), async (req: any, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "No photo file provided" });
+    }
+
+    const photoUrl = `/uploads/${req.file.filename}`;
+    return res.json({ photoUrl });
+  } catch (error: any) {
+    console.error("Error in uploading profile photo:", error);
+    return res.status(500).json({ message: "Error uploading profile photo", error: error.message });
   }
 });
 

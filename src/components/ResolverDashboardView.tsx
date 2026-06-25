@@ -13,8 +13,10 @@ import {
   TrendingUp,
   X,
   Plus,
-  Upload
+  Upload,
+  Shield
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import { User, Issue } from "../types";
 import LeaderboardView from "./LeaderboardView";
 
@@ -29,6 +31,7 @@ interface ResolverDashboardViewProps {
     note: string,
     proofFiles: FileList | File[] | null
   ) => Promise<Issue | null>;
+  onEditProfile?: () => void;
 }
 
 export default function ResolverDashboardView({
@@ -36,12 +39,14 @@ export default function ResolverDashboardView({
   issues,
   onLogout,
   onPostComment,
-  onStatusUpdate
+  onStatusUpdate,
+  onEditProfile
 }: ResolverDashboardViewProps) {
   const [activeTab, setActiveTab] = useState<"dashboard" | "leaderboard">("dashboard");
   const [resolverFeedTab, setResolverFeedTab] = useState<"open" | "resolved">("open");
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
   const [showMoreDetails, setShowMoreDetails] = useState<boolean>(false);
+  const [showMobileProfileDrawer, setShowMobileProfileDrawer] = useState<boolean>(false);
 
   // Reset showMoreDetails when active issue changes
   useEffect(() => {
@@ -113,6 +118,141 @@ export default function ResolverDashboardView({
 
   const totalResolvedCount = issues.filter((i) => i.status === "Resolved").length;
 
+  const renderRightPanel = (isMobileDrawer = false) => {
+    const handleEditProfileClick = () => {
+      if (isMobileDrawer) {
+        setShowMobileProfileDrawer(false);
+      }
+      onEditProfile?.();
+    };
+
+    const handleLogoutClick = () => {
+      if (isMobileDrawer) {
+        setShowMobileProfileDrawer(false);
+      }
+      onLogout();
+    };
+
+    return (
+      <div className="space-y-6">
+        {/* Profile Card */}
+        <div className="bg-white border border-slate-150 rounded-[28px] overflow-hidden shadow-sm">
+          {/* Dark Navy Header Band */}
+          <div className="h-24 bg-slate-900 relative">
+            <div className="absolute top-4 right-4 bg-white/10 backdrop-blur-xs text-white text-[9px] font-extrabold uppercase px-2.5 py-1 rounded-full border border-white/10 tracking-widest">
+              Verified
+            </div>
+          </div>
+
+          {/* Profile Avatar overlapping */}
+          <div className="px-6 pb-6 relative flex flex-col items-center text-center">
+            <div
+              onClick={handleEditProfileClick}
+              className="h-20 w-20 rounded-full bg-white p-1 shadow-md -mt-10 flex items-center justify-center cursor-pointer hover:scale-105 transition overflow-hidden bg-slate-50 border border-slate-200"
+              title="Click to Edit Profile"
+            >
+              {user.photoUrl ? (
+                <img src={user.photoUrl} className="h-full w-full object-cover rounded-full" alt={user.name} referrerPolicy="no-referrer" />
+              ) : (
+                <div className="h-full w-full rounded-full bg-slate-100 flex items-center justify-center text-slate-400 font-display font-black text-2xl border border-slate-200">
+                  {user.name ? user.name.charAt(0).toUpperCase() : "S"}
+                </div>
+              )}
+            </div>
+
+            {/* Details */}
+            <h3
+              onClick={handleEditProfileClick}
+              className="font-display text-xl font-extrabold text-slate-900 tracking-tight mt-3 cursor-pointer hover:text-blue-600 transition"
+              title="Click to Edit Profile"
+            >
+              {user.name}
+            </h3>
+            <span className="bg-emerald-50 text-emerald-600 border border-emerald-100 text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider mt-1.5">
+              ✓ Verified Resolver
+            </span>
+            <p className="text-xs font-semibold text-slate-400 mt-2">
+              {user.email}
+            </p>
+
+            {/* Edit Profile and Logout action links */}
+            <div className="flex items-center gap-2.5 mt-4">
+              <button
+                onClick={handleEditProfileClick}
+                className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
+              >
+                Edit Profile
+              </button>
+              <span className="text-slate-300">|</span>
+              <button
+                onClick={handleLogoutClick}
+                className="text-xs font-bold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+              >
+                Logout
+              </button>
+            </div>
+
+            <div className="w-full border-t border-slate-100 my-5"></div>
+
+            {/* Stats Row */}
+            <div className="w-full grid grid-cols-2 gap-4 text-center">
+              <div className="space-y-0.5 border-r border-slate-100">
+                <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Total Resolved</span>
+                <span className="block text-2xl font-display font-black text-slate-900">{totalResolvedCount}</span>
+              </div>
+              <div className="space-y-0.5">
+                <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Level Status</span>
+                <span className="block text-sm font-bold text-slate-700 mt-1">Lead Resolver</span>
+              </div>
+            </div>
+
+            <div className="w-full border-t border-slate-100 my-5"></div>
+
+            {/* Operational Badges */}
+            <div className="w-full text-left space-y-2">
+              <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Operational Badges</span>
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1 bg-blue-50 border border-blue-100 text-blue-600 text-[9px] font-extrabold uppercase px-2.5 py-1 rounded-full tracking-wide">
+                  <Award size={10} /> Fast Responder
+                </span>
+                <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-100 text-amber-600 text-[9px] font-extrabold uppercase px-2.5 py-1 rounded-full tracking-wide">
+                  <Award size={10} /> Seed Officer
+                </span>
+              </div>
+            </div>
+
+            <div className="w-full border-t border-slate-100 my-5"></div>
+
+            {/* Quick Action links */}
+            <div className="w-full text-left space-y-2.5">
+              <button
+                onClick={() => {
+                  if (isMobileDrawer) setShowMobileProfileDrawer(false);
+                  setActiveTab("leaderboard");
+                }}
+                className="w-full flex items-center justify-between text-xs font-bold text-slate-500 hover:text-blue-600 hover:bg-slate-50 p-2.5 rounded-xl transition cursor-pointer text-left"
+              >
+                <span>Resolver Leaderboard</span>
+                <ChevronRight size={14} />
+              </button>
+              <button
+                onClick={() => {
+                  if (isMobileDrawer) setShowMobileProfileDrawer(false);
+                  setResolverFeedTab("resolved");
+                }}
+                className="w-full flex items-center justify-between text-xs font-bold text-slate-500 hover:text-blue-600 hover:bg-slate-50 p-2.5 rounded-xl transition cursor-pointer text-left"
+              >
+                <span>Resolved Concerns Log</span>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 antialiased selection:bg-blue-100 selection:text-blue-900">
       
@@ -133,10 +273,10 @@ export default function ResolverDashboardView({
           </div>
 
           {/* Center: Tabs */}
-          <nav className="flex items-center gap-6">
+          <nav className="hidden sm:flex items-center gap-6">
             <button
               onClick={() => setActiveTab("dashboard")}
-              className={`text-sm font-bold tracking-wide transition pb-1 border-b-2 ${
+              className={`text-sm font-bold tracking-wide transition pb-1 border-b-2 cursor-pointer ${
                 activeTab === "dashboard"
                   ? "border-blue-600 text-blue-600"
                   : "border-transparent text-slate-400 hover:text-slate-600"
@@ -146,7 +286,7 @@ export default function ResolverDashboardView({
             </button>
             <button
               onClick={() => setActiveTab("leaderboard")}
-              className={`text-sm font-bold tracking-wide transition pb-1 border-b-2 ${
+              className={`text-sm font-bold tracking-wide transition pb-1 border-b-2 cursor-pointer ${
                 activeTab === "leaderboard"
                   ? "border-blue-600 text-blue-600"
                   : "border-transparent text-slate-400 hover:text-slate-600"
@@ -164,13 +304,24 @@ export default function ResolverDashboardView({
                 {user.email}
               </span>
             </div>
-            <div className="h-10 w-10 rounded-xl bg-blue-600/10 text-blue-600 font-display font-black flex items-center justify-center border border-blue-200">
-              S
-            </div>
+            
+            <button
+              onClick={() => setShowMobileProfileDrawer(true)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 font-display text-sm font-bold text-blue-600 border border-blue-100 shadow-sm select-none overflow-hidden cursor-pointer hover:scale-[1.02] hover:bg-blue-100/60 transition"
+              title="Profile Overview"
+              type="button"
+            >
+              {user.photoUrl ? (
+                <img src={user.photoUrl} className="h-full w-full object-cover" alt={user.name} referrerPolicy="no-referrer" />
+              ) : (
+                user.name ? user.name.charAt(0).toUpperCase() : "S"
+              )}
+            </button>
+
             <button
               onClick={onLogout}
               title="Logout"
-              className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 transition hover:bg-slate-50 hover:text-red-500"
+              className="hidden sm:block rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 transition hover:bg-slate-50 hover:text-red-500 cursor-pointer"
             >
               <LogOut size={18} />
             </button>
@@ -178,6 +329,30 @@ export default function ResolverDashboardView({
 
         </div>
       </header>
+
+      {/* MOBILE SUB-NAVBAR (sm:hidden) */}
+      <div className="flex border-b border-slate-150 bg-white p-2 sm:hidden overflow-x-auto gap-1 sticky top-[72px] z-30 shadow-xs">
+        <button
+          onClick={() => setActiveTab("dashboard")}
+          className={`flex-1 text-center py-2 text-xs font-bold transition rounded-xl cursor-pointer ${
+            activeTab === "dashboard"
+              ? "text-blue-600 bg-blue-50/80"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Dashboard
+        </button>
+        <button
+          onClick={() => setActiveTab("leaderboard")}
+          className={`flex-1 text-center py-2 text-xs font-bold transition rounded-xl cursor-pointer ${
+            activeTab === "leaderboard"
+              ? "text-blue-600 bg-blue-50/80"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Leaderboard
+        </button>
+      </div>
 
       {/* BODY CONTENT */}
       <main className="max-w-7xl mx-auto px-6 py-10 sm:px-12">
@@ -632,93 +807,62 @@ export default function ResolverDashboardView({
             </div>
 
             {/* RIGHT COLUMN: RESOLVER PROFILE & QUICK CONTROLS (Col-span 4) */}
-            <div className="lg:col-span-4 space-y-6">
-              
-              {/* Profile Card */}
-              <div className="bg-white border border-slate-150 rounded-[28px] overflow-hidden shadow-sm">
-                {/* Dark Navy Header Band */}
-                <div className="h-24 bg-slate-900 relative">
-                  <div className="absolute top-4 right-4 bg-white/10 backdrop-blur-xs text-white text-[9px] font-extrabold uppercase px-2.5 py-1 rounded-full border border-white/10 tracking-widest">
-                    Verified
-                  </div>
-                </div>
-
-                {/* Profile Avatar overlapping */}
-                <div className="px-6 pb-6 relative flex flex-col items-center text-center">
-                  <div className="h-20 w-20 rounded-full bg-white p-1 shadow-md -mt-10 flex items-center justify-center">
-                    <div className="h-full w-full rounded-full bg-slate-100 flex items-center justify-center text-slate-400 font-display font-black text-2xl border border-slate-200">
-                      {user.name ? user.name.charAt(0).toUpperCase() : "S"}
-                    </div>
-                  </div>
-
-                  {/* Details */}
-                  <h3 className="font-display text-xl font-extrabold text-slate-900 tracking-tight mt-3">
-                    {user.name}
-                  </h3>
-                  <span className="bg-emerald-50 text-emerald-600 border border-emerald-100 text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider mt-1.5">
-                    ✓ Verified Resolver
-                  </span>
-                  <p className="text-xs font-semibold text-slate-400 mt-2">
-                    {user.email}
-                  </p>
-
-                  <div className="w-full border-t border-slate-100 my-5"></div>
-
-                  {/* Stats Row */}
-                  <div className="w-full grid grid-cols-2 gap-4 text-center">
-                    <div className="space-y-0.5 border-r border-slate-100">
-                      <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Total Resolved</span>
-                      <span className="block text-2xl font-display font-black text-slate-900">{totalResolvedCount}</span>
-                    </div>
-                    <div className="space-y-0.5">
-                      <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Level Status</span>
-                      <span className="block text-sm font-bold text-slate-700 mt-1">Lead Resolver</span>
-                    </div>
-                  </div>
-
-                  <div className="w-full border-t border-slate-100 my-5"></div>
-
-                  {/* Operational Badges */}
-                  <div className="w-full text-left space-y-2">
-                    <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Operational Badges</span>
-                    <div className="flex flex-wrap gap-2">
-                      <span className="inline-flex items-center gap-1 bg-blue-50 border border-blue-100 text-blue-600 text-[9px] font-extrabold uppercase px-2.5 py-1 rounded-full tracking-wide">
-                        <Award size={10} /> Fast Responder
-                      </span>
-                      <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-100 text-amber-600 text-[9px] font-extrabold uppercase px-2.5 py-1 rounded-full tracking-wide">
-                        <Award size={10} /> Seed Officer
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="w-full border-t border-slate-100 my-5"></div>
-
-                  {/* Quick Action links */}
-                  <div className="w-full text-left space-y-2.5">
-                    <button
-                      onClick={() => setActiveTab("leaderboard")}
-                      className="w-full flex items-center justify-between text-xs font-bold text-slate-500 hover:text-blue-600 hover:bg-slate-50 p-2.5 rounded-xl transition"
-                    >
-                      <span>Resolver Leaderboard</span>
-                      <ChevronRight size={14} />
-                    </button>
-                    <button
-                      onClick={() => setResolverFeedTab("resolved")}
-                      className="w-full flex items-center justify-between text-xs font-bold text-slate-500 hover:text-blue-600 hover:bg-slate-50 p-2.5 rounded-xl transition"
-                    >
-                      <span>Resolved Concerns Log</span>
-                      <ChevronRight size={14} />
-                    </button>
-                  </div>
-
-                </div>
-              </div>
-
+            <div className="hidden lg:block lg:col-span-4">
+              {renderRightPanel(false)}
             </div>
 
           </div>
         )}
       </main>
+
+      {/* MOBILE DRAWER: PROFILE, YOUR STATS & LEADERBOARD LINKS */}
+      <AnimatePresence>
+        {showMobileProfileDrawer && (
+          <div className="fixed inset-0 z-50 overflow-hidden lg:hidden">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowMobileProfileDrawer(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
+            />
+
+            {/* Slider container */}
+            <div className="absolute inset-y-0 right-0 max-w-full flex">
+              <motion.div
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 220 }}
+                className="w-screen max-w-md bg-slate-50 shadow-2xl flex flex-col h-full border-l border-slate-200"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-5 border-b border-slate-150 bg-white shadow-xs">
+                  <div>
+                    <h3 className="font-display text-lg font-extrabold text-slate-950">Resolver Hub</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Operational Console
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowMobileProfileDrawer(false)}
+                    className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
+                    type="button"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                {/* Body (Scrollable) */}
+                <div className="flex-1 overflow-y-auto px-6 py-6">
+                  {renderRightPanel(true)}
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
