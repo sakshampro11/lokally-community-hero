@@ -2,7 +2,8 @@
   "name": "Lokally",
   "description": "A citizen-driven platform for reporting civic issues like potholes and leaks, tracking progress, and collaborating on community improvements.",
   "requestFramePermissions": [
-    "geolocation"
+    "geolocation",
+    "microphone"
   ],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

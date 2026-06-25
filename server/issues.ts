@@ -1,6 +1,6 @@
 import { Router, Response } from "express";
 import { collection, doc, getDoc, getDocs, addDoc, updateDoc, setDoc, query, orderBy } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, uploadFileToFirebaseStorage } from "./firebase";
 import { authenticateToken, AuthenticatedRequest } from "./middleware";
 import { upload } from "./upload";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -153,7 +153,7 @@ Please extract and return a JSON object with the following fields:
     if (req.files && Array.isArray(req.files) && req.files.length > 0) {
       const file = req.files[0] as Express.Multer.File;
       if (file.mimetype.startsWith("image/")) {
-        const fileData = fs.readFileSync(file.path);
+        const fileData = file.buffer;
         parts.push({
           inlineData: {
             data: fileData.toString("base64"),
@@ -168,7 +168,8 @@ Please extract and return a JSON object with the following fields:
       "gemini-3.5-flash",
       "gemini-3.1-flash-lite",
       "gemini-flash-latest",
-      "gemini-2.5-flash"
+      "gemini-2.5-flash",
+      "gemini-3.1-pro-preview"
     ];
     let response: any = null;
     let lastError: any = null;
@@ -233,19 +234,6 @@ Please extract and return a JSON object with the following fields:
   } catch (error: any) {
     console.error("Error during AI analysis:", error);
     return res.status(500).json({ message: "Error analyzing issue with AI", error: error.message });
-  } finally {
-    // Always clean up temporary uploads for this analysis call to avoid leaking disk space
-    if (req.files && Array.isArray(req.files)) {
-      for (const file of req.files) {
-        try {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
-        } catch (err) {
-          console.error("Failed to delete temp file:", file.path, err);
-        }
-      }
-    }
   }
 });
 
@@ -340,7 +328,7 @@ Return a JSON object with:
     if (req.files && Array.isArray(req.files) && req.files.length > 0) {
       const file = req.files[0] as Express.Multer.File;
       if (file.mimetype.startsWith("image/")) {
-        const fileData = fs.readFileSync(file.path);
+        const fileData = file.buffer;
         parts.push({ text: "Here is the photo of the newly reported issue:" });
         parts.push({
           inlineData: {
@@ -352,33 +340,60 @@ Return a JSON object with:
     }
 
     // Attach candidate photos
-    candidates.forEach((c, idx) => {
+    for (let idx = 0; idx < candidates.length; idx++) {
+      const c = candidates[idx];
       if (c.mediaUrl) {
-        const filename = c.mediaUrl.replace("/uploads/", "");
-        const filepath = path.join(process.cwd(), "uploads", filename);
-        if (fs.existsSync(filepath)) {
-          const fileData = fs.readFileSync(filepath);
-          const ext = path.extname(filepath).toLowerCase();
-          let mimeType = "image/jpeg";
-          if (ext === ".png") mimeType = "image/png";
-          else if (ext === ".webp") mimeType = "image/webp";
-          
-          parts.push({ text: `Here is the photo of Candidate #${idx + 1} (ID: "${c.id}"):` });
-          parts.push({
-            inlineData: {
-              data: fileData.toString("base64"),
-              mimeType
+        if (c.mediaUrl.startsWith("http")) {
+          try {
+            const fetchRes = await fetch(c.mediaUrl);
+            if (fetchRes.ok) {
+              const arrayBuffer = await fetchRes.arrayBuffer();
+              const fileData = Buffer.from(arrayBuffer);
+              const ext = path.extname(new URL(c.mediaUrl).pathname).toLowerCase();
+              let mimeType = "image/jpeg";
+              if (ext === ".png") mimeType = "image/png";
+              else if (ext === ".webp") mimeType = "image/webp";
+
+              parts.push({ text: `Here is the photo of Candidate #${idx + 1} (ID: "${c.id}"):` });
+              parts.push({
+                inlineData: {
+                  data: fileData.toString("base64"),
+                  mimeType
+                }
+              });
             }
-          });
+          } catch (fetchErr) {
+            console.error(`Failed to fetch candidate image from URL: ${c.mediaUrl}`, fetchErr);
+          }
+        } else {
+          const filename = c.mediaUrl.replace("/uploads/", "");
+          const filepath = path.join(process.cwd(), "uploads", filename);
+          if (fs.existsSync(filepath)) {
+            const fileData = fs.readFileSync(filepath);
+            const ext = path.extname(filepath).toLowerCase();
+            let mimeType = "image/jpeg";
+            if (ext === ".png") mimeType = "image/png";
+            else if (ext === ".webp") mimeType = "image/webp";
+
+            parts.push({ text: `Here is the photo of Candidate #${idx + 1} (ID: "${c.id}"):` });
+            parts.push({
+              inlineData: {
+                data: fileData.toString("base64"),
+                mimeType
+              }
+            });
+          }
         }
       }
-    });
+    }
 
     const ai = getGeminiClient();
     const modelsToTry = [
       "gemini-3.5-flash",
       "gemini-3.1-flash-lite",
-      "gemini-flash-latest"
+      "gemini-flash-latest",
+      "gemini-2.5-flash",
+      "gemini-3.1-pro-preview"
     ];
     let response: any = null;
     let lastError: any = null;
@@ -436,18 +451,6 @@ Return a JSON object with:
   } catch (error: any) {
     console.error("Error during duplicate check:", error);
     return res.json({ duplicate: null });
-  } finally {
-    if (req.files && Array.isArray(req.files)) {
-      for (const file of req.files) {
-        try {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
-        } catch (err) {
-          console.error("Failed to delete temp file:", file.path, err);
-        }
-      }
-    }
   }
 });
 
@@ -473,7 +476,14 @@ router.post("/", upload.array("media", 5), async (req: any, res: Response) => {
     // Process files
     let mediaUrls: string[] = [];
     if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-      mediaUrls = (req.files as Express.Multer.File[]).map((f) => `/uploads/${f.filename}`);
+      for (const file of req.files as Express.Multer.File[]) {
+        try {
+          const downloadUrl = await uploadFileToFirebaseStorage(file);
+          mediaUrls.push(downloadUrl);
+        } catch (uploadErr: any) {
+          console.error("Error uploading file to Firebase Storage:", uploadErr);
+        }
+      }
     }
 
     const issueData = {
@@ -608,7 +618,8 @@ Generate the following as a structured JSON object:
       "gemini-3.5-flash",
       "gemini-3.1-flash-lite",
       "gemini-flash-latest",
-      "gemini-2.5-flash"
+      "gemini-2.5-flash",
+      "gemini-3.1-pro-preview"
     ];
     let response: any = null;
     let lastError: any = null;
@@ -883,7 +894,14 @@ router.put("/:id/status", authenticateToken as any, upload.array("media", 5), as
     // Process files uploaded as proof
     let mediaUrls: string[] = [];
     if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-      mediaUrls = (req.files as Express.Multer.File[]).map((f) => `/uploads/${f.filename}`);
+      for (const file of req.files as Express.Multer.File[]) {
+        try {
+          const downloadUrl = await uploadFileToFirebaseStorage(file);
+          mediaUrls.push(downloadUrl);
+        } catch (uploadErr: any) {
+          console.error("Error uploading file to Firebase Storage:", uploadErr);
+        }
+      }
     }
 
     const newHistoryEntry = {

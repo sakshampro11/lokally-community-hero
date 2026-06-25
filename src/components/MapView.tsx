@@ -55,6 +55,7 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Record<string, L.Marker>>({});
+  const popupTimeoutRef = useRef<any | null>(null);
 
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
@@ -97,8 +98,15 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
     mapRef.current = mapInstance;
 
     return () => {
+      if (popupTimeoutRef.current) {
+        clearTimeout(popupTimeoutRef.current);
+      }
       if (mapRef.current) {
-        mapRef.current.remove();
+        try {
+          mapRef.current.remove();
+        } catch (e) {
+          console.warn("Error removing map instance:", e);
+        }
         mapRef.current = null;
       }
     };
@@ -109,8 +117,16 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
     const map = mapRef.current;
     if (!map) return;
 
-    // Remove existing markers
-    Object.values(markersRef.current).forEach((m) => map.removeLayer(m));
+    // Remove existing markers safely
+    Object.values(markersRef.current).forEach((m) => {
+      try {
+        if (map.hasLayer(m)) {
+          map.removeLayer(m);
+        }
+      } catch (e) {
+        console.warn("Error removing marker:", e);
+      }
+    });
     markersRef.current = {};
 
     const bounds: L.LatLngBoundsExpression = [];
@@ -126,12 +142,13 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
 
       const urls = issue.mediaUrls || (issue.mediaUrl ? [issue.mediaUrl] : []);
       const thumbUrl = urls[0] || null;
-      const isVideo = thumbUrl && /\.(mp4|mov|webm|avi)$/i.test(thumbUrl);
+      const displayUrl = thumbUrl;
+      const isVideo = displayUrl && /\.(mp4|mov|webm|avi)$/i.test(displayUrl);
 
-      const thumbHtml = thumbUrl
+      const thumbHtml = displayUrl
         ? isVideo
-          ? `<video style="width:100%; height:110px; object-fit:cover; display:block;" src="${thumbUrl}" muted playsinline></video>`
-          : `<img style="width:100%; height:110px; object-fit:cover; display:block;" src="${thumbUrl}" alt="Issue photo" />`
+          ? `<video style="width:100%; height:110px; object-fit:cover; display:block;" src="${displayUrl}" muted playsinline></video>`
+          : `<img style="width:100%; height:110px; object-fit:cover; display:block;" src="${displayUrl}" alt="Issue photo" onerror="this.src='https://images.unsplash.com/photo-1594322436404-5a0526db4d13?q=80&w=600&auto=format&fit=crop'" />`
         : "";
 
       const addr = loc.address || (issue as any).address || "—";
@@ -187,18 +204,47 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
         if (onSelectIssue) onSelectIssue(issue);
       });
 
-      marker.addTo(map);
-      markersRef.current[issue.id] = marker;
-      bounds.push([lat, lng]);
+      try {
+        marker.addTo(map);
+        markersRef.current[issue.id] = marker;
+        bounds.push([lat, lng]);
+      } catch (e) {
+        console.warn("Error adding marker to map:", e);
+      }
     });
 
     if (bounds.length > 0) {
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+      try {
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+      } catch (e) {
+        console.warn("Error fitting bounds:", e);
+      }
     }
+
+    return () => {
+      const currentMap = mapRef.current;
+      if (currentMap) {
+        Object.values(markersRef.current).forEach((m) => {
+          try {
+            if (currentMap.hasLayer(m)) {
+              currentMap.removeLayer(m);
+            }
+          } catch (e) {
+            // ignore
+          }
+        });
+      }
+      markersRef.current = {};
+    };
   }, [filtered]);
 
   // Handle focusing an issue from card list click
   const focusIssue = (issue: Issue) => {
+    if (popupTimeoutRef.current) {
+      clearTimeout(popupTimeoutRef.current);
+      popupTimeoutRef.current = null;
+    }
+
     setActiveCardId(issue.id);
     const marker = markersRef.current[issue.id];
     const map = mapRef.current;
@@ -207,10 +253,21 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
       const lat = loc.lat ?? (issue as any).lat;
       const lng = loc.lng ?? (issue as any).lng;
       if (lat && lng) {
-        map.flyTo([Number(lat), Number(lng)], 15, { duration: 0.8 });
-        setTimeout(() => {
-          marker.openPopup();
-        }, 850);
+        try {
+          map.flyTo([Number(lat), Number(lng)], 15, { duration: 0.8 });
+          popupTimeoutRef.current = setTimeout(() => {
+            try {
+              if (mapRef.current && marker && (marker as any)._map) {
+                marker.openPopup();
+              }
+            } catch (err) {
+              console.warn("Error opening marker popup:", err);
+            }
+            popupTimeoutRef.current = null;
+          }, 850);
+        } catch (e) {
+          console.warn("Error flying to marker:", e);
+        }
       }
     }
     if (onSelectIssue) onSelectIssue(issue);
@@ -336,6 +393,9 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
                         src={thumbUrl}
                         alt=""
                         className="h-10 w-12 rounded-lg object-cover border border-slate-100 flex-shrink-0"
+                        onError={(e) => {
+                          e.currentTarget.src = "https://images.unsplash.com/photo-1594322436404-5a0526db4d13?q=80&w=600&auto=format&fit=crop";
+                        }}
                       />
                     )}
                   </div>

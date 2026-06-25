@@ -2,7 +2,7 @@ import { Router, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { collection, doc, getDoc, getDocs, query, where, limit, addDoc, updateDoc } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, uploadFileToFirebaseStorage } from "./firebase";
 import { authenticateToken, AuthenticatedRequest } from "./middleware";
 import { upload } from "./upload";
 
@@ -302,7 +302,7 @@ router.post("/upload-photo", authenticateToken as any, upload.single("photo"), a
       return res.status(400).json({ message: "No photo file provided" });
     }
 
-    const photoUrl = `/uploads/${req.file.filename}`;
+    const photoUrl = await uploadFileToFirebaseStorage(req.file);
     return res.json({ photoUrl });
   } catch (error: any) {
     console.error("Error in uploading profile photo:", error);

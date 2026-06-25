@@ -529,7 +529,15 @@ export default function ResolverDashboardView({
                                   {isVid ? (
                                     <video src={url} controls className="w-full object-cover max-h-40" />
                                   ) : (
-                                    <img src={url} alt="Evidence" className="w-full object-cover max-h-40" referrerPolicy="no-referrer" />
+                                    <img
+                                      src={url}
+                                      alt="Evidence"
+                                      className="w-full object-cover max-h-40"
+                                      referrerPolicy="no-referrer"
+                                      onError={(e) => {
+                                        e.currentTarget.src = "https://images.unsplash.com/photo-1594322436404-5a0526db4d13?q=80&w=600&auto=format&fit=crop";
+                                      }}
+                                    />
                                   )}
                                 </div>
                               );
@@ -575,7 +583,15 @@ export default function ResolverDashboardView({
                                         {/\.(mp4|mov|webm|avi)$/i.test(mUrl) ? (
                                           <video src={mUrl} className="object-cover h-12 w-full" />
                                         ) : (
-                                          <img src={mUrl} alt="Status proof" className="object-cover h-12 w-full" referrerPolicy="no-referrer" />
+                                          <img
+                                            src={mUrl}
+                                            alt="Status proof"
+                                            className="object-cover h-12 w-full"
+                                            referrerPolicy="no-referrer"
+                                            onError={(e) => {
+                                              e.currentTarget.src = "https://images.unsplash.com/photo-1594322436404-5a0526db4d13?q=80&w=600&auto=format&fit=crop";
+                                            }}
+                                          />
                                         )}
                                       </a>
                                     ))}
