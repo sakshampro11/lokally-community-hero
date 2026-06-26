@@ -6,6 +6,8 @@ Civic problems — potholes, water leaks, broken streetlights, overflowing garba
 
 🔗 **Live app:** https://lokally-519985018130.asia-east1.run.app
 
+
+Imp note : Resolver access is fully functional — accessible via a dedicated login link in the site footer on landing page; this placement is intentional, not an oversight
 ---
 
 ## The flow, end to end
