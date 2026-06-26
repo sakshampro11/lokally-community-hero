@@ -68,10 +68,89 @@ export async function uploadFileToFirebaseStorage(file: any): Promise<string> {
     const url = await uploadToCloudinary(file);
     return url;
   } catch (cloudinaryError: any) {
-    console.warn("[Cloudinary] Upload failed/unconfigured. Falling back to local disk...", cloudinaryError?.message || cloudinaryError);
+    console.warn("[Cloudinary] Upload failed/unconfigured. Trying Firebase Storage fallback...", cloudinaryError?.message || cloudinaryError);
   }
 
-  // 2. Local fallback as a temporary fallback during local development (avoiding Firebase Storage entirely)
+  // 2. Secondary fallback: Firebase Storage via Admin SDK (Permanent Cloud Storage)
+  if (adminApp && firebaseConfig.storageBucket) {
+    try {
+      const ext = path.extname(file.originalname).toLowerCase();
+      const safeName = `issues/${Date.now()}-${Math.random().toString(36).slice(2, 9)}${ext}`;
+      const bucket = getAdminStorage(adminApp).bucket();
+      const fileRef = bucket.file(safeName);
+      const uuid = randomUUID();
+      
+      console.log(`[Firebase Storage Admin] Attempting upload of ${safeName}...`);
+      await fileRef.save(file.buffer, {
+        metadata: {
+          contentType: file.mimetype || "image/jpeg",
+          metadata: {
+            firebaseStorageDownloadTokens: uuid
+          }
+        }
+      });
+      
+      const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(safeName)}?alt=media&token=${uuid}`;
+      console.log(`[Firebase Storage Admin] Upload succeeded with permanent Firebase Storage download URL: ${downloadUrl}`);
+      return downloadUrl;
+    } catch (fbStorageError: any) {
+      console.error("[Firebase Storage Admin] Failed fallback upload:", fbStorageError?.message || fbStorageError);
+    }
+  } else {
+    console.warn("[Firebase Storage Admin] Skipping fallback because Firebase Admin or storageBucket is not configured.");
+  }
+
+  // 3. Robust Permanent Fallback: Convert to small compressed base64 URI using Jimp
+  // (This is stored inside the Firestore document directly, making it 100% durable and immune to container restarts!)
+  try {
+    const ext = path.extname(file.originalname).toLowerCase();
+    // Only compress and base64-encode image files
+    const isImage = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"].includes(ext);
+    if (isImage) {
+      console.log(`[Jimp Fallback] Compressing image ${file.originalname} into base64 for Firestore storage...`);
+      const { Jimp } = await import("jimp");
+      const image = await Jimp.read(file.buffer);
+      
+      // Get dimensions safely across Jimp versions
+      const width = image.bitmap ? image.bitmap.width : (image as any).width || 1000;
+      const height = image.bitmap ? image.bitmap.height : (image as any).height || 1000;
+      
+      if (width > 800 || height > 800) {
+        const ratio = width / height;
+        const targetWidth = ratio > 1 ? 800 : Math.round(800 * ratio);
+        const targetHeight = ratio > 1 ? Math.round(800 / ratio) : 800;
+        
+        if (typeof (image as any).resize === "function") {
+          try {
+            await (image as any).resize({ w: targetWidth, h: targetHeight });
+          } catch (e) {
+            await (image as any).resize(targetWidth, targetHeight);
+          }
+        }
+      }
+      
+      // Set compression quality if supported
+      if (typeof (image as any).quality === "function") {
+        try {
+          await (image as any).quality(75);
+        } catch (e) {}
+      }
+      
+      let base64Data: string;
+      if (typeof (image as any).getBase64Async === "function") {
+        base64Data = await (image as any).getBase64Async("image/jpeg");
+      } else {
+        base64Data = await (image as any).getBase64("image/jpeg");
+      }
+      
+      console.log(`[Jimp Fallback] Successfully generated compressed base64 data URI (${Math.round(base64Data.length / 1024)} KB)`);
+      return base64Data;
+    }
+  } catch (jimpError: any) {
+    console.error("[Jimp Fallback] Failed to compress image with Jimp:", jimpError?.message || jimpError);
+  }
+
+  // 4. Local fallback as a last resort (will be lost if container restarts/redeploys)
   try {
     const ext = path.extname(file.originalname).toLowerCase();
     const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}${ext}`;
@@ -81,11 +160,11 @@ export async function uploadFileToFirebaseStorage(file: any): Promise<string> {
     }
     const localFilePath = path.join(uploadDir, safeName);
     fs.writeFileSync(localFilePath, file.buffer);
-    console.log(`[Local Storage] Saved file locally: /uploads/${safeName}`);
+    console.warn(`[Local Storage] Saved file locally (TEMPORARY - will be lost on container restart): /uploads/${safeName}`);
     return `/uploads/${safeName}`;
   } catch (fsError: any) {
     console.error("[Local Storage] Critical: Failed to write file to local disk:", fsError?.message || fsError);
-    throw new Error("Failed to upload to Cloudinary and failed local disk fallback: " + (fsError?.message || String(fsError)));
+    throw new Error("Failed to upload to Cloudinary, Firebase Storage, Jimp Base64, and local disk fallback: " + (fsError?.message || String(fsError)));
   }
 }
 
@@ -111,25 +190,27 @@ export async function migrateSignedUrlsToPermanent() {
             else if (ext === ".webp") mimeType = "image/webp";
             else if (ext === ".gif") mimeType = "image/gif";
 
-            const uploadedUrl = await uploadToCloudinary({
+            const uploadedUrl = await uploadFileToFirebaseStorage({
               buffer: fileBuffer,
               mimetype: mimeType,
               originalname: filename
             });
 
-            // Clean up migrated local file to save space
-            try {
-              fs.unlinkSync(filepath);
-            } catch (_) {}
+            // Clean up migrated local file to save space only if upload was to an external permanent URL
+            if (uploadedUrl && !uploadedUrl.startsWith("/uploads/")) {
+              try {
+                fs.unlinkSync(filepath);
+              } catch (_) {}
+            }
 
             return uploadedUrl;
           } catch (err: any) {
-            console.error(`[Migration] Failed to upload local file ${filename} to Cloudinary:`, err?.message || err);
+            console.error(`[Migration] Failed to migrate local file ${filename}:`, err?.message || err);
             return url; // Keep original for retry
           }
         } else {
-          console.log(`[Migration] Local file ${filename} is missing on disk (wipe happened). Marking as Image Unavailable.`);
-          return "https://placehold.co/600x400?text=Image+Unavailable";
+          console.log(`[Migration] Local file ${filename} is missing on disk. Keeping original URL to avoid database corruption.`);
+          return url; // Keep original to avoid database corruption
         }
       }
 
@@ -148,19 +229,19 @@ export async function migrateSignedUrlsToPermanent() {
             if (ext === ".png") mimeType = "image/png";
             else if (ext === ".webp") mimeType = "image/webp";
 
-            const uploadedUrl = await uploadToCloudinary({
+            const uploadedUrl = await uploadFileToFirebaseStorage({
               buffer: fileBuffer,
               mimetype: mimeType,
               originalname: `migrated-${Date.now()}${ext}`
             });
             return uploadedUrl;
           } else {
-            console.warn(`[Migration] Firebase Storage URL returned status ${fetchRes.status}. Marking as Image Unavailable.`);
-            return "https://placehold.co/600x400?text=Image+Unavailable";
+            console.warn(`[Migration] Firebase Storage URL returned status ${fetchRes.status}. Keeping original URL.`);
+            return url;
           }
         } catch (err: any) {
           console.error(`[Migration] Failed to migrate GCS URL to Cloudinary:`, err?.message || err);
-          return "https://placehold.co/600x400?text=Image+Unavailable";
+          return url;
         }
       }
 

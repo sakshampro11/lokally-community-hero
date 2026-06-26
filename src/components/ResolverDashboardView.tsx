@@ -79,6 +79,13 @@ export default function ResolverDashboardView({
     } else {
       return iss.status === "Resolved";
     }
+  }).sort((a, b) => {
+    const aConf = a.confirmations || 0;
+    const bConf = b.confirmations || 0;
+    if (bConf !== aConf) {
+      return bConf - aConf; // More corroborations/confirmations first
+    }
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
   // Automatically select the first issue as active when feed tab or issues change

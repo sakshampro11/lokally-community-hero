@@ -106,6 +106,13 @@ export default function MapView({
     }
 
     return matchesCategory && matchesLocation;
+  }).sort((a, b) => {
+    const aConf = a.confirmations || 0;
+    const bConf = b.confirmations || 0;
+    if (bConf !== aConf) {
+      return bConf - aConf; // More confirmations first
+    }
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
   // Count mapped vs total
@@ -490,6 +497,11 @@ export default function MapView({
                       >
                         {issue.issueType}
                       </span>
+                      {issue.confirmations > 0 && (
+                        <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-violet-50 border border-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-600">
+                          👥 {issue.confirmations} {issue.confirmations === 1 ? "corroborator" : "corroborators"}
+                        </span>
+                      )}
                       <h4 className="font-display text-xs font-bold text-slate-800 line-clamp-1 leading-snug">
                         {issue.title}
                       </h4>

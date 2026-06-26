@@ -1,5 +1,5 @@
 import { Router, Response } from "express";
-import { collection, doc, getDoc, getDocs, addDoc, updateDoc, setDoc, query, orderBy } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, addDoc, updateDoc, setDoc, query, orderBy, deleteDoc } from "firebase/firestore";
 import { db, uploadFileToFirebaseStorage } from "./firebase";
 import { authenticateToken, AuthenticatedRequest } from "./middleware";
 import { upload } from "./upload";
@@ -8,6 +8,19 @@ import * as fs from "fs";
 import * as path from "path";
 
 const router = Router();
+
+// Helper utility for promise timeout
+function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string = "Request timed out"): Promise<T> {
+  let timeoutId: NodeJS.Timeout;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    clearTimeout(timeoutId);
+  });
+}
 
 // Lazy initializer helper for Gemini
 let aiClient: GoogleGenAI | null = null;
@@ -282,18 +295,26 @@ router.post("/check-duplicate", upload.array("media", 5), async (req: any, res: 
       if (itemLat == null || itemLng == null) continue;
 
       const distance = getDistanceInMeters(newLat, newLng, itemLat, itemLng);
-      // within 50 meters
-      if (distance <= 50) {
-        candidates.push({ id: doc.id, ...data });
+      // within 1000 meters (widened from 150m to capture nearby reports and let Gemini decide duplicates accurately)
+      if (distance <= 1000) {
+        candidates.push({ id: doc.id, ...data, distance });
       }
     }
 
     if (candidates.length === 0) {
+      console.log(`[Duplicate Check] No candidates found within 1000 meters.`);
       return res.json({ duplicate: null });
     }
 
+    // Sort by distance (closest first)
+    candidates.sort((a, b) => a.distance - b.distance);
+    // Limit to top 3 closest candidates to avoid giant payloads and ensure fast responses
+    const activeCandidates = candidates.slice(0, 3);
+    console.log(`[Duplicate Check] Selected ${activeCandidates.length} closest candidates for comparison.`);
+
     // Prepare Gemini payload
     if (!process.env.GEMINI_API_KEY) {
+      console.warn("[Duplicate Check] GEMINI_API_KEY is missing. Skipping duplicate check.");
       return res.json({ duplicate: null });
     }
 
@@ -306,7 +327,7 @@ Description: "${description || ""}"
 Category: "${issueType || ""}"
 
 Existing Nearby Issues:
-${candidates.map((c, idx) => `
+${activeCandidates.map((c, idx) => `
 Candidate #${idx + 1}:
 ID: "${c.id}"
 Title: "${c.title}"
@@ -339,33 +360,46 @@ Return a JSON object with:
       }
     }
 
-    // Attach candidate photos
-    for (let idx = 0; idx < candidates.length; idx++) {
-      const c = candidates[idx];
-      if (c.mediaUrl) {
-        if (c.mediaUrl.startsWith("http")) {
-          try {
-            const fetchRes = await fetch(c.mediaUrl);
-            if (fetchRes.ok) {
-              const arrayBuffer = await fetchRes.arrayBuffer();
-              const fileData = Buffer.from(arrayBuffer);
-              const ext = path.extname(new URL(c.mediaUrl).pathname).toLowerCase();
-              let mimeType = "image/jpeg";
-              if (ext === ".png") mimeType = "image/png";
-              else if (ext === ".webp") mimeType = "image/webp";
+    // Fetch candidate images in parallel
+    const imagePromises = activeCandidates.map(async (c, idx) => {
+      if (!c.mediaUrl) return null;
 
-              parts.push({ text: `Here is the photo of Candidate #${idx + 1} (ID: "${c.id}"):` });
-              parts.push({
-                inlineData: {
-                  data: fileData.toString("base64"),
-                  mimeType
-                }
-              });
+      if (c.mediaUrl.startsWith("http")) {
+        try {
+          console.log(`[Duplicate Check] Fetching candidate #${idx + 1} image: ${c.mediaUrl}`);
+          const fetchRes = await withTimeout(
+            fetch(c.mediaUrl),
+            3000,
+            `Fetch of candidate #${idx + 1} image timed out`
+          );
+          if (fetchRes.ok) {
+            const contentType = fetchRes.headers.get("content-type") || "";
+            if (!contentType.startsWith("image/")) {
+              console.warn(`[Duplicate Check] Candidate #${idx + 1} media is not a valid image (content-type: ${contentType}). Skipping.`);
+              return null;
             }
-          } catch (fetchErr) {
-            console.error(`Failed to fetch candidate image from URL: ${c.mediaUrl}`, fetchErr);
+
+            const arrayBuffer = await fetchRes.arrayBuffer();
+            const fileData = Buffer.from(arrayBuffer);
+            const ext = path.extname(new URL(c.mediaUrl).pathname).toLowerCase();
+            let mimeType = "image/jpeg";
+            if (ext === ".png") mimeType = "image/png";
+            else if (ext === ".webp") mimeType = "image/webp";
+
+            return {
+              id: c.id,
+              idx,
+              data: fileData.toString("base64"),
+              mimeType
+            };
+          } else {
+            console.warn(`[Duplicate Check] Candidate #${idx + 1} image fetch failed with status: ${fetchRes.status}`);
           }
-        } else {
+        } catch (fetchErr) {
+          console.error(`[Duplicate Check] Failed/timed out fetching candidate #${idx + 1} image from URL: ${c.mediaUrl}`, fetchErr);
+        }
+      } else {
+        try {
           const filename = c.mediaUrl.replace("/uploads/", "");
           const filepath = path.join(process.cwd(), "uploads", filename);
           if (fs.existsSync(filepath)) {
@@ -375,15 +409,32 @@ Return a JSON object with:
             if (ext === ".png") mimeType = "image/png";
             else if (ext === ".webp") mimeType = "image/webp";
 
-            parts.push({ text: `Here is the photo of Candidate #${idx + 1} (ID: "${c.id}"):` });
-            parts.push({
-              inlineData: {
-                data: fileData.toString("base64"),
-                mimeType
-              }
-            });
+            return {
+              id: c.id,
+              idx,
+              data: fileData.toString("base64"),
+              mimeType
+            };
           }
+        } catch (fsErr) {
+          console.error(`[Duplicate Check] Failed to read candidate #${idx + 1} local file: ${c.mediaUrl}`, fsErr);
         }
+      }
+      return null;
+    });
+
+    const fetchedImages = await Promise.all(imagePromises);
+
+    // Push successfully fetched images to parts sequentially
+    for (const imgInfo of fetchedImages) {
+      if (imgInfo) {
+        parts.push({ text: `Here is the photo of Candidate #${imgInfo.idx + 1} (ID: "${imgInfo.id}"):` });
+        parts.push({
+          inlineData: {
+            data: imgInfo.data,
+            mimeType: imgInfo.mimeType
+          }
+        });
       }
     }
 
@@ -400,31 +451,39 @@ Return a JSON object with:
 
     for (const modelName of modelsToTry) {
       try {
-        response = await ai.models.generateContent({
-          model: modelName,
-          contents: { parts },
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                isDuplicate: { type: Type.BOOLEAN },
-                duplicateId: { type: Type.STRING },
-                reason: { type: Type.STRING }
-              },
-              required: ["isDuplicate", "duplicateId", "reason"]
+        console.log(`[Duplicate Check] Attempting duplicate check with model: ${modelName}`);
+        response = await withTimeout(
+          ai.models.generateContent({
+            model: modelName,
+            contents: { parts },
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  isDuplicate: { type: Type.BOOLEAN },
+                  duplicateId: { type: Type.STRING },
+                  reason: { type: Type.STRING }
+                },
+                required: ["isDuplicate", "duplicateId", "reason"]
+              }
             }
-          }
-        });
-        if (response) break;
+          }),
+          22000, // Increased to 22 seconds to give the model ample time for vision processing
+          `Gemini model ${modelName} call timed out`
+        );
+        if (response) {
+          console.log(`[Duplicate Check] Model ${modelName} succeeded!`);
+          break;
+        }
       } catch (err: any) {
-        console.warn(`Duplicate check model ${modelName} failed:`, err.message || err);
+        console.warn(`[Duplicate Check] Model ${modelName} failed/timed out:`, err.message || err);
         lastError = err;
       }
     }
 
     if (!response) {
-      console.error("All models failed during duplicate check. Proceeding with no duplicate.");
+      console.error("[Duplicate Check] All models failed or timed out during duplicate check. Falling back to no-duplicate.");
       return res.json({ duplicate: null });
     }
 
@@ -432,8 +491,9 @@ Return a JSON object with:
     const result = JSON.parse(responseText.trim());
 
     if (result.isDuplicate && result.duplicateId) {
-      const match = candidates.find((c) => c.id === result.duplicateId);
+      const match = activeCandidates.find((c) => c.id === result.duplicateId);
       if (match) {
+        console.log(`[Duplicate Check] Duplicate matched successfully with ID: ${match.id}`);
         return res.json({
           duplicate: {
             id: match.id,
@@ -551,6 +611,27 @@ router.get("/", async (req: any, res: Response) => {
   } catch (error: any) {
     console.error("Error fetching issues:", error);
     return res.status(500).json({ message: "Error fetching issues", error: error.message });
+  }
+});
+
+// DELETE /api/issues/all - Clear all issues from Firestore database (Dangerous clean up utility)
+router.delete("/all", async (req: any, res: Response) => {
+  try {
+    console.log("[Clear All Issues] Received request to clear all issues from Firestore...");
+    const snapshot = await getDocs(collection(db, "issues"));
+    const deletePromises = snapshot.docs.map((docSnap) => deleteDoc(doc(db, "issues", docSnap.id)));
+    await Promise.all(deletePromises);
+    console.log(`[Clear All Issues] Successfully deleted ${snapshot.docs.length} issues.`);
+    
+    // Also delete cached insights so they regenerate with the empty slate
+    try {
+      await deleteDoc(doc(db, "cached_insights", "citywide"));
+    } catch (e) {}
+
+    return res.json({ message: `Successfully deleted all ${snapshot.docs.length} issues.` });
+  } catch (error: any) {
+    console.error("Error deleting all issues:", error);
+    return res.status(500).json({ message: "Error deleting all issues", error: error.message });
   }
 });
 

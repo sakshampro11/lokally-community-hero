@@ -128,6 +128,7 @@ export default function App() {
   const [categoryFilter, setCategoryFilter] = useState<string>("All");
   const [priorityFilter, setPriorityFilter] = useState<string>("All");
   const [loading, setLoading] = useState<boolean>(false);
+  const [clearingIssues, setClearingIssues] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<"dashboard" | "map" | "impact" | "leaderboard">("dashboard");
 
   // Modals
@@ -883,21 +884,43 @@ export default function App() {
     if (!bypassCheck) {
       setCheckingDuplicate(true);
       try {
+        console.log("[Duplicate Check] Starting check-duplicate...");
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          console.warn("[Duplicate Check] Timed out on client-side after 35s. Aborting fetch...");
+          controller.abort();
+        }, 35000);
+
         const checkRes = await fetch("/api/issues/check-duplicate", {
           method: "POST",
           body: formData,
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
+
+        console.log("[Duplicate Check] Response received:", checkRes.status);
         if (checkRes.ok) {
           const checkData = await checkRes.json();
+          console.log("[Duplicate Check] Decoded response data:", checkData);
           if (checkData.duplicate) {
             setDuplicateIssue(checkData.duplicate);
             setShowDuplicateModal(true);
             setCheckingDuplicate(false);
-            return;
+            return; // EXIT here to show duplicate warning modal instead of auto-submitting
+          } else {
+            console.log("[Duplicate Check] No duplicate detected by AI.");
           }
+        } else {
+          console.warn("[Duplicate Check] Server returned non-2xx status code:", checkRes.status);
+          showToast("Couldn't check for duplicates, filing your report normally.", "info");
         }
-      } catch (err) {
-        console.error("Duplicate check failed:", err);
+      } catch (err: any) {
+        console.error("[Duplicate Check] Error or timeout checking duplicates:", err);
+        const isAbort = err.name === "AbortError" || err.message?.includes("abort");
+        const msg = isAbort 
+          ? "Duplicate check took too long; filing your report normally." 
+          : "Couldn't check for duplicates, filing your report normally.";
+        showToast(msg, "info");
       } finally {
         setCheckingDuplicate(false);
       }
@@ -937,19 +960,37 @@ export default function App() {
   };
 
   const handleDuplicateCorroborate = async () => {
-    if (!duplicateIssue) return;
+    console.log("[Corroborate Clicked] Starting corroborate handler...", {
+      duplicateIssueId: duplicateIssue?.id,
+      duplicateIssueTitle: duplicateIssue?.title,
+      hasToken: !!token,
+      hasUser: !!user,
+      userId: user?.id,
+      corroborateSaving
+    });
+
+    if (!duplicateIssue) {
+      console.warn("[Corroborate Error] No duplicateIssue found in state!");
+      return;
+    }
     if (!token) {
+      console.warn("[Corroborate Error] No token found in state! Cannot authenticate request.");
       showToast("Please sign in or register to corroborate this issue.", "info");
       return;
     }
     setCorroborateSaving(true);
     try {
-      const res = await fetch(`/api/issues/${duplicateIssue.id}/confirm`, {
+      const url = `/api/issues/${duplicateIssue.id}/confirm`;
+      console.log(`[Corroborate Fetch] Making POST request to: ${url}`);
+      const res = await fetch(url, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       });
+      console.log(`[Corroborate Response] Status: ${res.status} ${res.statusText}`);
+
       if (res.ok) {
         const updated = await res.json();
+        console.log("[Corroborate Success] Parsed updated issue:", updated);
         setIssues((prev) => prev.map((iss) => (iss.id === duplicateIssue.id ? { ...iss, ...updated } : iss)));
         showToast("You have successfully corroborated this issue! Thank you.", "success");
         setShowDuplicateModal(false);
@@ -974,17 +1015,45 @@ export default function App() {
         let errMsg = "Corroboration failed";
         try {
           const errData = await res.json();
+          console.error("[Corroborate Error Response JSON]", errData);
           errMsg = errData.message || errMsg;
         } catch (_) {
-          // not JSON
+          console.error("[Corroborate Error Response Text] Response is not JSON.");
         }
-        showToast(errMsg, "error");
+
+        const isAlreadyHandled = errMsg.includes("own issue") || errMsg.includes("already confirmed");
+
+        if (isAlreadyHandled) {
+          showToast(errMsg, "info");
+          // Close modals and reset form since they don't need to file a new report
+          setShowDuplicateModal(false);
+          setShowNewIssueModal(false);
+          setDuplicateIssue(null);
+          setNewIssue({
+            title: "",
+            summary: "",
+            description: "",
+            issueType: "",
+            priority: "Low",
+            address: "",
+            lat: "",
+            lng: ""
+          });
+          setSelectedFiles([]);
+          setGeoStatus({ status: "idle", message: "" });
+          setAiError(null);
+          setAiLoading(false);
+          fetchUserProfile();
+        } else {
+          showToast(errMsg, "error");
+        }
       }
     } catch (err: any) {
-      console.error("Failed to corroborate issue:", err);
+      console.error("[Corroborate Request Exception] Failed to corroborate issue:", err);
       showToast(`Network error corroborating issue: ${err.message || err}`, "error");
     } finally {
       setCorroborateSaving(false);
+      console.log("[Corroborate Ended] setCorroborateSaving(false) executed.");
     }
   };
 
@@ -1187,6 +1256,13 @@ export default function App() {
     }
 
     return matchesCategory && matchesPriority && matchesLocation;
+  }).sort((a, b) => {
+    const aConf = a.confirmations || 0;
+    const bConf = b.confirmations || 0;
+    if (bConf !== aConf) {
+      return bConf - aConf; // More corroborations come first
+    }
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
   const myReports = user ? issues.filter((iss) => iss.reporterId === user.id) : [];
@@ -1292,6 +1368,12 @@ export default function App() {
                 <span className="rounded-full bg-indigo-50 border border-indigo-100 px-3 py-1 text-[11px] font-extrabold text-indigo-600 tracking-wide uppercase flex items-center gap-1">
                   <Award size={12} />
                   Community Verified
+                </span>
+              )}
+
+              {(issue.confirmations || 0) > 0 && (
+                <span className="rounded-full bg-violet-50 border border-violet-100 px-3 py-1 text-[11px] font-bold text-violet-600 tracking-wide uppercase flex items-center gap-1">
+                  👥 {issue.confirmations} {issue.confirmations === 1 ? "corroborator" : "corroborators"}
                 </span>
               )}
             </div>
@@ -2680,6 +2762,11 @@ export default function App() {
                       <span className="inline-block rounded-full bg-slate-200 px-2 py-0.5 text-[9px] font-bold text-slate-600 uppercase tracking-wide">
                         Existing Active Report
                       </span>
+                      {(duplicateIssue.confirmations || 0) > 0 && (
+                        <span className="ml-1.5 inline-block rounded-full bg-violet-100 px-2 py-0.5 text-[9px] font-bold text-violet-700 uppercase tracking-wide">
+                          👥 {duplicateIssue.confirmations} {duplicateIssue.confirmations === 1 ? "corroborator" : "corroborators"}
+                        </span>
+                      )}
                       <h4 className="font-display text-sm font-extrabold text-slate-900 mt-1 truncate">
                         {duplicateIssue.title}
                       </h4>
