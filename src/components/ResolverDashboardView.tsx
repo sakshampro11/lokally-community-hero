@@ -20,6 +20,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { User, Issue } from "../types";
 import LeaderboardView from "./LeaderboardView";
+import MapView from "./MapView";
 
 interface ResolverDashboardViewProps {
   user: User;
@@ -43,7 +44,7 @@ export default function ResolverDashboardView({
   onStatusUpdate,
   onEditProfile
 }: ResolverDashboardViewProps) {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "leaderboard">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "map" | "leaderboard">("dashboard");
   const [resolverFeedTab, setResolverFeedTab] = useState<"open" | "resolved">("open");
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
   const [showMoreDetails, setShowMoreDetails] = useState<boolean>(false);
@@ -283,6 +284,16 @@ export default function ResolverDashboardView({
               Dashboard
             </button>
             <button
+              onClick={() => setActiveTab("map")}
+              className={`text-sm font-bold tracking-wide transition pb-1 border-b-2 cursor-pointer ${
+                activeTab === "map"
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              Map View
+            </button>
+            <button
               onClick={() => setActiveTab("leaderboard")}
               className={`text-sm font-bold tracking-wide transition pb-1 border-b-2 cursor-pointer ${
                 activeTab === "leaderboard"
@@ -341,6 +352,16 @@ export default function ResolverDashboardView({
           Dashboard
         </button>
         <button
+          onClick={() => setActiveTab("map")}
+          className={`flex-1 text-center py-2 text-xs font-bold transition rounded-xl cursor-pointer ${
+            activeTab === "map"
+              ? "text-blue-600 bg-blue-50/80"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          Map
+        </button>
+        <button
           onClick={() => setActiveTab("leaderboard")}
           className={`flex-1 text-center py-2 text-xs font-bold transition rounded-xl cursor-pointer ${
             activeTab === "leaderboard"
@@ -357,6 +378,17 @@ export default function ResolverDashboardView({
         {activeTab === "leaderboard" ? (
           /* Render Leaderboard Tab */
           <LeaderboardView currentUserRole={user.role} />
+        ) : activeTab === "map" ? (
+          /* Render Map View Tab */
+          <div className="w-full">
+            <MapView
+              issues={issues}
+              onSelectIssue={(issue) => {
+                setActiveIssue(issue);
+                setActiveTab("dashboard");
+              }}
+            />
+          </div>
         ) : (
           /* Render Dashboard Split Screen (Matches Image 8 exactly) */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">

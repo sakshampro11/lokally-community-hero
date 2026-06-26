@@ -33,7 +33,8 @@ import {
   Gift,
   Mic,
   Image,
-  XCircle
+  XCircle,
+  Share2
 } from "lucide-react";
 import { User as UserType, Issue, Comment } from "./types";
 import MapView from "./components/MapView";
@@ -384,6 +385,65 @@ export default function App() {
     }, 8000); // poll every 8 seconds
     return () => clearInterval(interval);
   }, []);
+
+  // Support deep linking to a specific issue via ?issueId=xyz query parameter
+  useEffect(() => {
+    if (issues.length > 0) {
+      const params = new URLSearchParams(window.location.search);
+      const issueId = params.get("issueId");
+      if (issueId) {
+        const found = issues.find((i) => i.id === issueId);
+        if (found) {
+          setActiveIssue(found);
+        }
+      }
+    }
+  }, [issues]);
+
+  const handleCloseActiveIssue = () => {
+    setActiveIssue(null);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("issueId")) {
+      params.delete("issueId");
+      const newQuery = params.toString();
+      const newUrl = window.location.origin + window.location.pathname + (newQuery ? `?${newQuery}` : "");
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  };
+
+  const handleShareIssue = async () => {
+    if (!activeIssue) return;
+    const shareUrl = `${window.location.origin}${window.location.pathname}?issueId=${activeIssue.id}`;
+    const shareData = {
+      title: `Lokally: ${activeIssue.title}`,
+      text: `Urgent community report in our neighborhood: "${activeIssue.title}". Tap to view real-time resolver status, photos and updates on Lokally!`,
+      url: shareUrl,
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        showToast("Shared successfully!", "success");
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          copyShareLinkToClipboard(shareUrl);
+        }
+      }
+    } else {
+      copyShareLinkToClipboard(shareUrl);
+    }
+  };
+
+  const copyShareLinkToClipboard = (url: string) => {
+    navigator.clipboard.writeText(url).then(
+      () => {
+        showToast("Shareable link copied to clipboard!", "success");
+      },
+      () => {
+        showToast("Failed to copy link.", "error");
+      }
+    );
+  };
 
   const fetchUserProfile = async () => {
     try {
@@ -1597,7 +1657,7 @@ export default function App() {
                   </button>
 
                   {showNotificationsDropdown && (
-                    <div className="absolute right-0 mt-2 w-[calc(100vw-2.5rem)] sm:w-80 max-w-[320px] sm:max-w-none rounded-2xl border border-slate-150 bg-white shadow-xl z-50 overflow-hidden">
+                    <div className="absolute right-[-12px] sm:right-0 mt-2 w-72 sm:w-80 rounded-2xl border border-slate-150 bg-white shadow-xl z-50 overflow-hidden">
                       <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/50 px-4 py-3">
                         <span className="font-display text-xs font-bold text-slate-800">Real-time Notifications</span>
                         {unreadCount > 0 && (
@@ -2533,12 +2593,23 @@ export default function App() {
               exit={{ scale: 0.95, opacity: 0 }}
               className="relative w-full max-w-2xl rounded-3xl border border-slate-150 bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto sm:p-8"
             >
-              <button
-                onClick={() => setActiveIssue(null)}
-                className="absolute top-6 right-6 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <X size={18} />
-              </button>
+              <div className="absolute top-6 right-6 flex items-center gap-1.5">
+                <button
+                  onClick={handleShareIssue}
+                  className="rounded-xl px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-slate-100 transition flex items-center gap-1.5 cursor-pointer"
+                  title="Share Report"
+                >
+                  <Share2 size={14} />
+                  <span className="hidden sm:inline">Share Report</span>
+                </button>
+                <button
+                  onClick={handleCloseActiveIssue}
+                  className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
+                  title="Close"
+                >
+                  <X size={18} />
+                </button>
+              </div>
 
               {/* Title / Header */}
               <div className="mb-4">
