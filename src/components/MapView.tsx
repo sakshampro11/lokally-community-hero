@@ -7,6 +7,23 @@ import { Filter, AlertTriangle, Clock, MapPin, Navigation, List, X, Info } from 
 interface MapViewProps {
   issues: Issue[];
   onSelectIssue?: (issue: Issue) => void;
+  currentUserCoords?: { lat: number; lng: number } | null;
+  locationFilterMode?: "nearby" | "all";
+  setLocationFilterMode?: (mode: "nearby" | "all") => void;
+}
+
+function getDistanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000; // Earth's radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 const CAT_COLORS: Record<string, string> = {
@@ -51,7 +68,13 @@ function formatTimeAgo(dateString: string) {
   return `${days}d ago`;
 }
 
-export default function MapView({ issues, onSelectIssue }: MapViewProps) {
+export default function MapView({
+  issues,
+  onSelectIssue,
+  currentUserCoords = null,
+  locationFilterMode = "all",
+  setLocationFilterMode = () => {}
+}: MapViewProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Record<string, L.Marker>>({});
@@ -61,14 +84,29 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
 
-  // Filter issues based on active filter
-  const filtered = activeFilter === "all"
-    ? issues
-    : issues.filter((i) => {
-        const typeLower = i.issueType.toLowerCase();
-        const filterLower = activeFilter.toLowerCase();
-        return typeLower === filterLower || typeLower.includes(filterLower);
-      });
+  // Filter issues based on active filter and nearby toggle
+  const filtered = issues.filter((i) => {
+    // 1. Category Filter
+    let matchesCategory = true;
+    if (activeFilter !== "all") {
+      const typeLower = i.issueType.toLowerCase();
+      const filterLower = activeFilter.toLowerCase();
+      matchesCategory = typeLower === filterLower || typeLower.includes(filterLower);
+    }
+
+    // 2. Location Filter
+    let matchesLocation = true;
+    if (locationFilterMode === "nearby" && currentUserCoords) {
+      const lat = i.location?.lat ?? (typeof (i as any).lat === "number" ? (i as any).lat : null);
+      const lng = i.location?.lng ?? (typeof (i as any).lng === "number" ? (i as any).lng : null);
+      if (lat != null && lng != null) {
+        const distance = getDistanceInMeters(currentUserCoords.lat, currentUserCoords.lng, lat, lng);
+        matchesLocation = distance <= 3000; // 3km
+      }
+    }
+
+    return matchesCategory && matchesLocation;
+  });
 
   // Count mapped vs total
   const hasLatLng = (issue: Issue) => {
@@ -84,16 +122,39 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
+    const defaultCenter: L.LatLngExpression = currentUserCoords
+      ? [currentUserCoords.lat, currentUserCoords.lng]
+      : [28.6139, 77.2090];
+    const defaultZoom = currentUserCoords ? 13 : 5;
+
     // Build map
     const mapInstance = L.map(mapContainerRef.current, {
       zoomControl: true,
       minZoom: 2,
-    }).setView([28.6139, 77.2090], 5); // Default center (e.g. New Delhi / general India coordinates)
+    }).setView(defaultCenter, defaultZoom);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '© <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
       maxZoom: 19,
     }).addTo(mapInstance);
+
+    // Place a custom pulse marker for user's own location
+    if (currentUserCoords) {
+      const userMarkerIcon = L.divIcon({
+        html: `
+          <div class="relative flex items-center justify-center">
+            <div class="absolute h-5 w-5 rounded-full bg-blue-500 animate-ping opacity-75"></div>
+            <div class="relative h-3 w-3 rounded-full bg-blue-600 border-2 border-white shadow-md"></div>
+          </div>
+        `,
+        className: "user-location-marker",
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      });
+      const userMarker = L.marker([currentUserCoords.lat, currentUserCoords.lng], { icon: userMarkerIcon });
+      userMarker.bindPopup(`<div style="font-family:'Inter', sans-serif; font-size:11px; font-weight:800; text-align:center; padding: 2px;">Your Current Location</div>`);
+      userMarker.addTo(mapInstance);
+    }
 
     mapRef.current = mapInstance;
 
@@ -110,7 +171,7 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
         mapRef.current = null;
       }
     };
-  }, []);
+  }, [currentUserCoords]);
 
   // Sync / Render Markers
   useEffect(() => {
@@ -296,6 +357,40 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
             </button>
           </div>
 
+          {/* Nearby vs Show All Toggle */}
+          <div className="mb-4 flex items-center justify-between">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+              Coverage Area
+            </span>
+            <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+              <button
+                disabled={!currentUserCoords}
+                onClick={() => setLocationFilterMode("nearby")}
+                className={`rounded-lg py-1 px-2.5 text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                  !currentUserCoords
+                    ? "opacity-40 cursor-not-allowed text-slate-400"
+                    : locationFilterMode === "nearby"
+                    ? "bg-white text-blue-600 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+                title={!currentUserCoords ? "Location access unavailable" : "Show issues within 3km"}
+              >
+                <Navigation size={10} className={locationFilterMode === "nearby" && currentUserCoords ? "text-blue-500 fill-blue-500/20" : ""} />
+                Nearby
+              </button>
+              <button
+                onClick={() => setLocationFilterMode("all")}
+                className={`rounded-lg py-1 px-2.5 text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                  locationFilterMode === "all" || !currentUserCoords
+                    ? "bg-white text-slate-700 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Show All
+              </button>
+            </div>
+          </div>
+
           {/* Filter Chips inside Sidebar */}
           <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1">
             <button
@@ -363,6 +458,17 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
               const urls = issue.mediaUrls || (issue.mediaUrl ? [issue.mediaUrl] : []);
               const thumbUrl = urls[0] || null;
 
+              // Calculate distance to current user if available
+              let mapCardDistanceStr = "";
+              if (currentUserCoords) {
+                const lat = issue.location?.lat ?? (typeof (issue as any).lat === "number" ? (issue as any).lat : null);
+                const lng = issue.location?.lng ?? (typeof (issue as any).lng === "number" ? (issue as any).lng : null);
+                if (lat != null && lng != null) {
+                  const meters = getDistanceInMeters(currentUserCoords.lat, currentUserCoords.lng, lat, lng);
+                  mapCardDistanceStr = `${(meters / 1000).toFixed(1)} km away`;
+                }
+              }
+
               return (
                 <div
                   key={issue.id}
@@ -400,11 +506,16 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400">
+                  <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 gap-1 flex-wrap">
                     <span className="flex items-center gap-1">
                       <AlertTriangle size={11} className={issue.priority === "High" ? "text-rose-500" : "text-slate-300"} />
                       {issue.priority} Priority
                     </span>
+                    {mapCardDistanceStr && (
+                      <span className="text-blue-600 bg-blue-50/50 px-1.5 py-0.5 rounded-md text-[9px] font-bold">
+                        {mapCardDistanceStr}
+                      </span>
+                    )}
                     <span className="flex items-center gap-0.5">
                       <Clock size={11} />
                       {formatTimeAgo(issue.createdAt)}
@@ -428,7 +539,7 @@ export default function MapView({ issues, onSelectIssue }: MapViewProps) {
         <div id="leaflet-map-canvas" className="h-full w-full z-0" ref={mapContainerRef}></div>
 
         {/* Category Legend (Overlay) */}
-        <div className="absolute bottom-5 right-5 z-[500] hidden rounded-2xl border border-slate-100 bg-white/95 p-4 shadow-xl backdrop-blur sm:block max-w-xs">
+        <div className="absolute bottom-5 right-5 z-[500] hidden rounded-2xl border border-slate-100 bg-white p-4 shadow-xl sm:block max-w-xs">
           <h3 className="font-display text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2.5">
             Color Legend
           </h3>

@@ -147,7 +147,7 @@ export default function MapPicker({ lat, lng, onChange }: MapPickerProps) {
       <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-inner bg-slate-50">
         <div ref={mapContainerRef} className="h-44 w-full z-10" />
         {typeof lat === "number" && typeof lng === "number" && (
-          <div className="absolute bottom-2 left-2 z-20 bg-slate-900/80 backdrop-blur-xs text-[10px] font-mono text-white px-2 py-1 rounded shadow-xs flex items-center gap-1">
+          <div className="absolute bottom-2 left-2 z-20 bg-slate-900/90 text-[10px] font-mono text-white px-2 py-1 rounded shadow-xs flex items-center gap-1">
             <MapPin size={10} className="text-rose-400" />
             <span>
               {lat.toFixed(5)}, {lng.toFixed(5)}

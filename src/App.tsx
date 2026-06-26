@@ -14,6 +14,7 @@ import {
   User,
   Award,
   ChevronRight,
+  ChevronDown,
   X,
   FileText,
   ThumbsUp,
@@ -45,6 +46,28 @@ import CitizenAuthView from "./components/CitizenAuthView";
 import ResolverAuthView from "./components/ResolverAuthView";
 import ResolverDashboardView from "./components/ResolverDashboardView";
 import MapPicker from "./components/MapPicker";
+
+function getDistanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000; // Earth's radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+export function getInitials(name?: string | null): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
 
 export default function App() {
   // Auth state
@@ -139,6 +162,11 @@ export default function App() {
   const [showDuplicateModal, setShowDuplicateModal] = useState<boolean>(false);
   const [checkingDuplicate, setCheckingDuplicate] = useState<boolean>(false);
 
+  // Location filtering states
+  const [currentUserCoords, setCurrentUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationAccessFailed, setLocationAccessFailed] = useState<boolean>(false);
+  const [locationFilterMode, setLocationFilterMode] = useState<"nearby" | "all">("nearby");
+
   // New comment state
   const [commentText, setCommentText] = useState<string>("");
 
@@ -208,6 +236,24 @@ export default function App() {
 
   // Notification states
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState<boolean>(false);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        showNotificationsDropdown &&
+        notificationsRef.current &&
+        !notificationsRef.current.contains(event.target as Node)
+      ) {
+        setShowNotificationsDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showNotificationsDropdown]);
+
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem("ch_read_notification_ids");
@@ -384,6 +430,27 @@ export default function App() {
       fetchIssues(true);
     }, 8000); // poll every 8 seconds
     return () => clearInterval(interval);
+  }, []);
+
+  // Fetch current user location on mount
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCurrentUserCoords({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+        },
+        (error) => {
+          console.warn("Could not acquire user location:", error);
+          setLocationAccessFailed(true);
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
+      );
+    } else {
+      setLocationAccessFailed(true);
+    }
   }, []);
 
   // Support deep linking to a specific issue via ?issueId=xyz query parameter
@@ -591,6 +658,11 @@ export default function App() {
           lat: position.coords.latitude,
           lng: position.coords.longitude
         }));
+        setCurrentUserCoords({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+        setLocationAccessFailed(false);
         setGeoStatus({
           status: "success",
           message: `Location locked: ${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`
@@ -1077,15 +1149,25 @@ export default function App() {
     const matchesCategory = categoryFilter === "All" || iss.issueType === categoryFilter;
     const matchesPriority = priorityFilter === "All" || iss.priority === priorityFilter;
 
-    if (user && user.role === "resolver") {
-      if (resolverFeedTab === "open") {
-        return matchesCategory && matchesPriority && iss.status !== "Resolved";
-      } else {
-        return matchesCategory && matchesPriority && iss.status === "Resolved";
+    let matchesLocation = true;
+    if (locationFilterMode === "nearby" && currentUserCoords) {
+      const itemLat = iss.location?.lat;
+      const itemLng = iss.location?.lng;
+      if (itemLat != null && itemLng != null) {
+        const distance = getDistanceInMeters(currentUserCoords.lat, currentUserCoords.lng, itemLat, itemLng);
+        matchesLocation = distance <= 3000; // 3km
       }
     }
 
-    return matchesCategory && matchesPriority;
+    if (user && user.role === "resolver") {
+      if (resolverFeedTab === "open") {
+        return matchesCategory && matchesPriority && matchesLocation && iss.status !== "Resolved";
+      } else {
+        return matchesCategory && matchesPriority && matchesLocation && iss.status === "Resolved";
+      }
+    }
+
+    return matchesCategory && matchesPriority && matchesLocation;
   });
 
   const myReports = user ? issues.filter((iss) => iss.reporterId === user.id) : [];
@@ -1103,7 +1185,7 @@ export default function App() {
             {/* reporter + date */}
             <div className="mb-3.5 flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 font-display text-xs font-bold text-blue-600 border border-blue-100">
-                {issue.name.charAt(0).toUpperCase()}
+                {getInitials(issue.name)}
               </div>
               <span className="text-xs font-bold text-slate-700">{issue.name}</span>
               <span className="text-xs text-slate-300">&bull;</span>
@@ -1122,12 +1204,37 @@ export default function App() {
             </p>
 
             {/* Address Location */}
-            {issue.address && (
-              <div className="mb-4 flex items-center gap-1.5 text-xs font-bold text-slate-400">
-                <MapPin size={13} className="text-slate-300" />
-                <span>{issue.address}</span>
-              </div>
-            )}
+            {(() => {
+              let distanceStr = "";
+              if (currentUserCoords) {
+                const itemLat = issue.location?.lat;
+                const itemLng = issue.location?.lng;
+                if (itemLat != null && itemLng != null) {
+                  const meters = getDistanceInMeters(currentUserCoords.lat, currentUserCoords.lng, itemLat, itemLng);
+                  const km = meters / 1000;
+                  distanceStr = `${km.toFixed(1)} km away`;
+                }
+              }
+
+              if (!issue.address && !distanceStr) return null;
+
+              return (
+                <div className="mb-4 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs font-bold text-slate-400">
+                  {issue.address && (
+                    <div className="flex items-center gap-1.5">
+                      <MapPin size={13} className="text-slate-300" />
+                      <span>{issue.address}</span>
+                    </div>
+                  )}
+                  {issue.address && distanceStr && <span className="text-slate-300">&bull;</span>}
+                  {distanceStr && (
+                    <span className="text-blue-600 bg-blue-50/50 px-2 py-0.5 rounded-lg text-[10px] font-extrabold tracking-wide uppercase border border-blue-100/40">
+                      {distanceStr}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Badges / statuses */}
             <div className="flex flex-wrap items-center gap-2 mb-5">
@@ -1286,7 +1393,7 @@ export default function App() {
               {user.photoUrl ? (
                 <img src={user.photoUrl} className="h-full w-full object-cover" alt={user.name} referrerPolicy="no-referrer" />
               ) : (
-                user.name.charAt(0).toUpperCase()
+                getInitials(user.name)
               )}
             </div>
             <div className="h-6"></div>
@@ -1582,7 +1689,7 @@ export default function App() {
         <>
           {/* CITIZEN PORTAL */}
           {/* HEADER NAV */}
-          <nav className="sticky top-0 z-30 border-b border-slate-150/80 bg-white/80 px-6 py-4 backdrop-blur-md sm:px-12">
+          <nav className="sticky top-0 z-30 border-b border-slate-150/80 bg-white px-6 py-4 sm:px-12">
             <div className="mx-auto grid w-full max-w-7xl grid-cols-2 items-center md:grid-cols-3">
               {/* Left Logo */}
               <div className="flex items-center justify-start">
@@ -1642,7 +1749,7 @@ export default function App() {
               {/* Right: Notifications & Profile Dropdown */}
               <div className="flex items-center justify-end gap-5">
                 {/* Real-time Notifications Bell & Dropdown */}
-                <div className="relative">
+                <div className="relative" ref={notificationsRef}>
                   <button
                     onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
                     className="relative text-slate-500 transition hover:text-blue-600 focus:outline-none cursor-pointer p-1.5"
@@ -1650,7 +1757,7 @@ export default function App() {
                   >
                     <Bell size={18} />
                     {unreadCount > 0 && (
-                      <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-extrabold text-white animate-pulse">
+                      <span className="absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-extrabold text-white shadow-sm">
                         {unreadCount}
                       </span>
                     )}
@@ -1737,7 +1844,7 @@ export default function App() {
                         {user.photoUrl ? (
                           <img src={user.photoUrl} className="h-full w-full object-cover" alt={user.name} referrerPolicy="no-referrer" />
                         ) : (
-                          user.name.charAt(0).toUpperCase()
+                          getInitials(user.name)
                         )}
                       </div>
                     </div>
@@ -1777,7 +1884,7 @@ export default function App() {
                                   />
                                 ) : (
                                   <span className="text-base font-bold text-slate-400">
-                                    {profileForm.name ? profileForm.name.charAt(0).toUpperCase() : "?"}
+                                    {getInitials(profileForm.name)}
                                   </span>
                                 )}
                               </div>
@@ -1888,7 +1995,7 @@ export default function App() {
                     {user.photoUrl ? (
                       <img src={user.photoUrl} className="h-full w-full object-cover" alt={user.name} referrerPolicy="no-referrer" />
                     ) : (
-                      user.name.charAt(0).toUpperCase()
+                      getInitials(user.name)
                     )}
                   </button>
                 </div>
@@ -1945,7 +2052,7 @@ export default function App() {
           {activeTab === "dashboard" && (
             <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
             {/* LEFT FEED COLUMN (8 Cols) - RENDERED AS A STUNNING UNIFIED WHITE PANEL */}
-            <div className="lg:col-span-8 rounded-3xl border border-slate-150 bg-white p-6 shadow-sm space-y-6 sm:p-8">
+            <div className="lg:col-span-8 rounded-none border-0 bg-transparent p-0 shadow-none sm:rounded-3xl sm:border sm:border-slate-150 sm:bg-white sm:p-8 sm:shadow-sm space-y-6">
               <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center pb-2">
                 <div>
                   <h2 className="font-display text-3xl font-extrabold text-slate-900 tracking-tight">
@@ -1978,37 +2085,72 @@ export default function App() {
                 </div>
 
                 {/* FILTERS PANEL */}
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 px-4 py-2.5 rounded-2xl shadow-xs transition hover:border-slate-300">
-                    <Filter size={14} className="text-slate-400" />
-                    <select
-                      value={categoryFilter}
-                      onChange={(e) => setCategoryFilter(e.target.value)}
-                      className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer pr-1 focus:outline-none"
-                    >
-                      <option value="All">All Categories</option>
-                      <option value="Water">Water Supply</option>
-                      <option value="Electricity">Electricity</option>
-                      <option value="Road">Road Condition</option>
-                      <option value="Sanitation">Sanitation</option>
-                      <option value="Pothole">Potholes</option>
-                      <option value="Streetlight">Streetlights</option>
-                      <option value="Other">Other</option>
-                    </select>
+                <div className="flex flex-col gap-2 w-full sm:w-80 sm:items-stretch">
+                  {/* Coverage Selector Toggle - Aligned to the right */}
+                  <div className="flex justify-end">
+                    <div className="flex gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+                      <button
+                        disabled={!currentUserCoords}
+                        onClick={() => setLocationFilterMode("nearby")}
+                        className={`rounded-lg py-1 px-2.5 text-center text-xs font-extrabold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                          !currentUserCoords
+                            ? "opacity-45 cursor-not-allowed text-slate-400"
+                            : locationFilterMode === "nearby"
+                            ? "bg-white text-blue-600 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                        title={!currentUserCoords ? "Location access unavailable" : "Show issues within 3km"}
+                      >
+                        <Navigation size={11} className={locationFilterMode === "nearby" && currentUserCoords ? "text-blue-500 fill-blue-500/20" : ""} />
+                        <span>Nearby</span>
+                      </button>
+                      <button
+                        onClick={() => setLocationFilterMode("all")}
+                        className={`rounded-lg py-1 px-2.5 text-center text-xs font-extrabold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                          locationFilterMode === "all" || !currentUserCoords
+                            ? "bg-white text-slate-700 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        <span>Show All</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 px-4 py-2.5 rounded-2xl shadow-xs transition hover:border-slate-300">
-                    <AlertTriangle size={14} className="text-slate-400" />
-                    <select
-                      value={priorityFilter}
-                      onChange={(e) => setPriorityFilter(e.target.value)}
-                      className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer pr-1 focus:outline-none"
-                    >
-                      <option value="All">All Priority</option>
-                      <option value="High">High</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Low">Low</option>
-                    </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 px-2.5 py-2 rounded-xl shadow-xs transition hover:border-slate-300 w-full">
+                      <Filter size={13} className="text-slate-400 shrink-0" />
+                      <select
+                        value={categoryFilter}
+                        onChange={(e) => setCategoryFilter(e.target.value)}
+                        className="appearance-none bg-transparent text-[11px] font-extrabold text-slate-700 outline-none cursor-pointer pr-4 focus:outline-none flex-1 min-w-0"
+                      >
+                        <option value="All">All Categories</option>
+                        <option value="Water">Water Supply</option>
+                        <option value="Electricity">Electricity</option>
+                        <option value="Road">Road Condition</option>
+                        <option value="Sanitation">Sanitation</option>
+                        <option value="Pothole">Potholes</option>
+                        <option value="Streetlight">Streetlights</option>
+                        <option value="Other">Other</option>
+                      </select>
+                      <ChevronDown size={11} className="text-slate-400 pointer-events-none shrink-0" />
+                    </div>
+
+                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 px-2.5 py-2 rounded-xl shadow-xs transition hover:border-slate-300 w-full">
+                      <AlertTriangle size={13} className="text-slate-400 shrink-0" />
+                      <select
+                        value={priorityFilter}
+                        onChange={(e) => setPriorityFilter(e.target.value)}
+                        className="appearance-none bg-transparent text-[11px] font-extrabold text-slate-700 outline-none cursor-pointer pr-4 focus:outline-none flex-1 min-w-0"
+                      >
+                        <option value="All">All Priority</option>
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                      </select>
+                      <ChevronDown size={11} className="text-slate-400 pointer-events-none shrink-0" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2085,6 +2227,9 @@ export default function App() {
               onSelectIssue={(issue) => {
                 setActiveIssue(issue);
               }}
+              currentUserCoords={currentUserCoords}
+              locationFilterMode={locationFilterMode}
+              setLocationFilterMode={setLocationFilterMode}
             />
           )}
 
@@ -2111,7 +2256,7 @@ export default function App() {
       {/* MODAL: REPORT NEW ISSUE */}
       <AnimatePresence>
         {showNewIssueModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -2473,12 +2618,12 @@ export default function App() {
       {/* MODAL: DUPLICATE DETECTION WARNING */}
       <AnimatePresence>
         {showDuplicateModal && duplicateIssue && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/80">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="relative w-full max-w-lg rounded-3xl border border-amber-200 bg-amber-50/30 p-6 shadow-2xl max-h-[90vh] overflow-y-auto sm:p-8 backdrop-blur-md"
+              className="relative w-full max-w-lg rounded-3xl border border-amber-200 bg-amber-50 p-6 shadow-2xl max-h-[90vh] overflow-y-auto sm:p-8"
             >
               <div className="bg-white rounded-2xl p-6 border border-amber-100 shadow-sm">
                 <div className="flex items-center gap-3 mb-4">
@@ -2586,7 +2731,7 @@ export default function App() {
       {/* MODAL: DETAIL DIALOG WITH TIMELINE & COMMENTS */}
       <AnimatePresence>
         {activeIssue && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -2905,7 +3050,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowLogoutConfirm(false)}
-              className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+              className="absolute inset-0 bg-slate-950/60"
             />
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 10 }}
@@ -2953,7 +3098,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowProfileModal(false)}
-              className="absolute inset-0 bg-slate-950/40 backdrop-blur-xs"
+              className="absolute inset-0 bg-slate-950/55"
             />
 
             {/* Modal Content */}
@@ -2996,7 +3141,7 @@ export default function App() {
                         />
                       ) : (
                         <span className="text-base font-bold text-slate-400">
-                          {profileForm.name ? profileForm.name.charAt(0).toUpperCase() : "?"}
+                          {getInitials(profileForm.name)}
                         </span>
                       )}
                     </div>
@@ -3103,7 +3248,7 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowMobileProfileDrawer(false)}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
+              className="absolute inset-0 bg-slate-900/75"
             />
 
             {/* Slider container */}

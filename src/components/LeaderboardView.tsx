@@ -6,6 +6,14 @@ interface LeaderboardViewProps {
   currentUserRole?: "citizen" | "resolver";
 }
 
+function getInitials(name?: string | null): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
 export default function LeaderboardView({ currentUserRole = "citizen" }: LeaderboardViewProps) {
   const [leaderboard, setLeaderboard] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -48,7 +56,7 @@ export default function LeaderboardView({ currentUserRole = "citizen" }: Leaderb
           : "from-amber-500 via-orange-500 to-rose-500"
       }`}>
         <div className="relative z-10 max-w-lg">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-wider backdrop-blur-xs">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-bold uppercase tracking-wider">
             <Trophy size={12} /> {currentUserRole === "resolver" ? "Resolvers Honor Roll" : "Citizens Honor Roll"}
           </span>
           <div className="flex items-center gap-2.5 mt-4">
@@ -197,7 +205,7 @@ export default function LeaderboardView({ currentUserRole = "citizen" }: Leaderb
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-2">
                             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 font-display text-xs font-bold text-blue-600 border border-blue-100 uppercase">
-                              {user.name.charAt(0)}
+                              {getInitials(user.name)}
                             </div>
                             <div>
                               <span className="block text-slate-800 truncate max-w-[140px]">{user.name}</span>
@@ -243,7 +251,7 @@ export default function LeaderboardView({ currentUserRole = "citizen" }: Leaderb
 
       {/* Leaderboard Rules & Badges Info Modal */}
       {showInfoModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75 animate-fade-in">
           <div className="relative w-full max-w-2xl rounded-3xl border border-slate-150 bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto sm:p-8">
             <button
               onClick={() => setShowInfoModal(false)}

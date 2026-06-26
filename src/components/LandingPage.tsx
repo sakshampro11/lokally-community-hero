@@ -136,7 +136,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-blue-100 selection:text-blue-900 overflow-x-hidden">
       {/* HEADER */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-3 sm:px-12 transition-all">
+      <header className="sticky top-0 z-40 bg-white border-b border-slate-100 px-4 py-3 sm:px-12 transition-all">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
           {/* Logo */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -847,7 +847,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
 
       {/* REFERRAL / JOIN MODAL */}
       {showReferModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75">
           <div className="relative w-full max-w-lg overflow-hidden rounded-[32px] border border-slate-100 bg-white p-6 sm:p-8 shadow-2xl animate-in fade-in zoom-in duration-200">
             {/* Close Button */}
             <button

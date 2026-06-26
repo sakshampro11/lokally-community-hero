@@ -22,6 +22,14 @@ import { User, Issue } from "../types";
 import LeaderboardView from "./LeaderboardView";
 import MapView from "./MapView";
 
+function getInitials(name?: string | null): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
 interface ResolverDashboardViewProps {
   user: User;
   issues: Issue[];
@@ -141,7 +149,7 @@ export default function ResolverDashboardView({
         <div className="bg-white border border-slate-150 rounded-[28px] overflow-hidden shadow-sm">
           {/* Dark Navy Header Band */}
           <div className="h-24 bg-slate-900 relative">
-            <div className="absolute top-4 right-4 bg-white/10 backdrop-blur-xs text-white text-[9px] font-extrabold uppercase px-2.5 py-1 rounded-full border border-white/10 tracking-widest">
+            <div className="absolute top-4 right-4 bg-white/20 text-white text-[9px] font-extrabold uppercase px-2.5 py-1 rounded-full border border-white/15 tracking-widest">
               Verified
             </div>
           </div>
@@ -157,7 +165,7 @@ export default function ResolverDashboardView({
                 <img src={user.photoUrl} className="h-full w-full object-cover rounded-full" alt={user.name} referrerPolicy="no-referrer" />
               ) : (
                 <div className="h-full w-full rounded-full bg-slate-100 flex items-center justify-center text-slate-400 font-display font-black text-2xl border border-slate-200">
-                  {user.name ? user.name.charAt(0).toUpperCase() : "S"}
+                  {getInitials(user.name)}
                 </div>
               )}
             </div>
@@ -323,7 +331,7 @@ export default function ResolverDashboardView({
               {user.photoUrl ? (
                 <img src={user.photoUrl} className="h-full w-full object-cover" alt={user.name} referrerPolicy="no-referrer" />
               ) : (
-                user.name ? user.name.charAt(0).toUpperCase() : "S"
+                getInitials(user.name)
               )}
             </button>
 
@@ -871,7 +879,7 @@ export default function ResolverDashboardView({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowMobileProfileDrawer(false)}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
+              className="absolute inset-0 bg-slate-900/75"
             />
 
             {/* Slider container */}

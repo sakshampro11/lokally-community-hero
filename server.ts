@@ -4,7 +4,7 @@ import * as path from "path";
 import { createServer as createViteServer } from "vite";
 import bcrypt from "bcryptjs";
 import { collection, query, where, getDocs, addDoc, limit } from "firebase/firestore";
-import { db } from "./server/firebase";
+import { db, migrateSignedUrlsToPermanent } from "./server/firebase";
 import authRouter from "./server/auth";
 import issuesRouter from "./server/issues";
 
@@ -103,6 +103,11 @@ async function startServer() {
   } catch (error) {
     console.error("❌ Error seeding resolver accounts:", error);
   }
+
+  // Run async migration to convert expiring signed GCS URLs to permanent tokenized Firebase download URLs
+  migrateSignedUrlsToPermanent().catch((err) => {
+    console.error("❌ Error running storage URL migration:", err);
+  });
 
   // Integrate Vite for single-page client loading
   if (process.env.NODE_ENV !== "production") {
