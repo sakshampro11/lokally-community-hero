@@ -267,7 +267,7 @@ export default function ImpactView({ issues }: ImpactViewProps) {
       {/* High-level metrics row */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {/* Metric 1: Total Reports */}
-        <div className="rounded-[24px] border border-slate-100 bg-white p-6 sm:p-7 shadow-xs hover:shadow-sm transition-shadow duration-200">
+        <div className="rounded-[24px] border border-slate-100 bg-white p-6 sm:p-7 shadow-xs hover:shadow-sm transition-shadow duration-200 low-end-simplify-card">
           <div className="flex items-center gap-2.5 mb-5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100/50">
               <Megaphone size={16} />
@@ -285,7 +285,7 @@ export default function ImpactView({ issues }: ImpactViewProps) {
         </div>
 
         {/* Metric 2: Resolved This Month */}
-        <div className="rounded-[24px] border border-slate-100 bg-white p-6 sm:p-7 shadow-xs hover:shadow-sm transition-shadow duration-200">
+        <div className="rounded-[24px] border border-slate-100 bg-white p-6 sm:p-7 shadow-xs hover:shadow-sm transition-shadow duration-200 low-end-simplify-card">
           <div className="flex items-center gap-2.5 mb-5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100/50">
               <CheckCircle2 size={16} />
@@ -303,7 +303,7 @@ export default function ImpactView({ issues }: ImpactViewProps) {
         </div>
 
         {/* Metric 3: Resolution Rate */}
-        <div className="rounded-[24px] border border-slate-100 bg-white p-6 sm:p-7 shadow-xs hover:shadow-sm transition-shadow duration-200">
+        <div className="rounded-[24px] border border-slate-100 bg-white p-6 sm:p-7 shadow-xs hover:shadow-sm transition-shadow duration-200 low-end-simplify-card">
           <div className="flex items-center gap-2.5 mb-5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-50 text-purple-600 border border-purple-100/50">
               <Percent size={16} />
@@ -321,7 +321,7 @@ export default function ImpactView({ issues }: ImpactViewProps) {
         </div>
 
         {/* Metric 4: Avg Resolution Time */}
-        <div className="rounded-[24px] border border-slate-100 bg-white p-6 sm:p-7 shadow-xs hover:shadow-sm transition-shadow duration-200">
+        <div className="rounded-[24px] border border-slate-100 bg-white p-6 sm:p-7 shadow-xs hover:shadow-sm transition-shadow duration-200 low-end-simplify-card">
           <div className="flex items-center gap-2.5 mb-5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600 border border-amber-100/50">
               <Clock size={16} />

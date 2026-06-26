@@ -1,5 +1,5 @@
-import React, { FormEvent } from "react";
-import { ArrowLeft } from "lucide-react";
+import React, { FormEvent, useState } from "react";
+import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { BrandLogo } from "./BrandLogo";
 
 interface ResolverAuthViewProps {
@@ -21,6 +21,8 @@ export default function ResolverAuthView({
   onLoginSubmit,
   prefillResolver
 }: ResolverAuthViewProps) {
+  const [showPassword, setShowPassword] = useState<boolean>(false);
+
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 sm:p-8 font-sans selection:bg-blue-100 selection:text-blue-900">
       {/* CARD CONTAINER (Centered box, shadow-2xl, border) */}
@@ -79,14 +81,24 @@ export default function ResolverAuthView({
             <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
               Password
             </label>
-            <input
-              type="password"
-              required
-              value={loginForm.password}
-              onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-              placeholder="••••••••"
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-medium outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                value={loginForm.password}
+                onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                placeholder="••••••••"
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-4 pr-12 py-3 text-sm font-medium outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           <button

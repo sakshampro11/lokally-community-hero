@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { User } from "../types";
+import { useIsLowEnd } from "../utils/device";
 import { Trophy, Award, Medal, ShieldCheck, UserCheck, Star, Sparkles, HelpCircle, X, Info } from "lucide-react";
 
 interface LeaderboardViewProps {
@@ -15,6 +16,7 @@ function getInitials(name?: string | null): string {
 }
 
 export default function LeaderboardView({ currentUserRole = "citizen" }: LeaderboardViewProps) {
+  const isLowEnd = useIsLowEnd();
   const [leaderboard, setLeaderboard] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,10 +52,10 @@ export default function LeaderboardView({ currentUserRole = "citizen" }: Leaderb
   return (
     <div className="space-y-8 animate-fade-in relative">
       {/* Banner */}
-      <div className={`rounded-3xl p-8 text-white shadow-lg relative overflow-hidden bg-linear-to-r ${
-        currentUserRole === "resolver"
-          ? "from-blue-600 via-indigo-600 to-violet-600"
-          : "from-amber-500 via-orange-500 to-rose-500"
+      <div className={`rounded-3xl p-8 text-white relative overflow-hidden low-end-paint-isolation ${
+        isLowEnd
+          ? (currentUserRole === "resolver" ? "bg-blue-600" : "bg-amber-500")
+          : `shadow-lg bg-linear-to-r ${currentUserRole === "resolver" ? "from-blue-600 via-indigo-600 to-violet-600" : "from-amber-500 via-orange-500 to-rose-500"}`
       }`}>
         <div className="relative z-10 max-w-lg">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-bold uppercase tracking-wider">
@@ -115,7 +117,7 @@ export default function LeaderboardView({ currentUserRole = "citizen" }: Leaderb
                 return (
                   <div
                     key={user.id}
-                    className={`rounded-2xl border p-5 shadow-xs flex items-center gap-4 relative overflow-hidden ${colors.bg}`}
+                    className={`rounded-2xl border p-5 shadow-xs flex items-center gap-4 relative overflow-hidden low-end-simplify-card ${colors.bg}`}
                   >
                     <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-xs shrink-0">
                       {colors.icon}
@@ -167,7 +169,7 @@ export default function LeaderboardView({ currentUserRole = "citizen" }: Leaderb
           </div>
 
           {/* Leaderboard Table List */}
-          <div className="lg:col-span-8 rounded-3xl border border-slate-150 bg-white p-6 shadow-xs">
+          <div className="lg:col-span-8 rounded-3xl border border-slate-150 bg-white p-6 shadow-xs low-end-simplify-card">
             <h3 className="font-display text-lg font-extrabold text-slate-900 tracking-tight mb-4">
               All Ranked Members
             </h3>

@@ -38,6 +38,7 @@ import {
   Share2
 } from "lucide-react";
 import { User as UserType, Issue, Comment } from "./types";
+import { isLowEndDevice, useIsLowEnd } from "./utils/device";
 import MapView from "./components/MapView";
 import ImpactView from "./components/ImpactView";
 import LeaderboardView from "./components/LeaderboardView";
@@ -70,6 +71,7 @@ export function getInitials(name?: string | null): string {
 }
 
 export default function App() {
+  const isLowEnd = useIsLowEnd();
   // Auth state
   const [token, setToken] = useState<string | null>(localStorage.getItem("ch_token"));
   const [user, setUser] = useState<UserType | null>(null);
@@ -99,6 +101,13 @@ export default function App() {
     // Check if on a mobile device
     const mobileCheck = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
     setIsMobileDevice(mobileCheck);
+
+    // Check for low-end device rendering path and add CSS class
+    if (isLowEndDevice()) {
+      document.documentElement.classList.add("is-low-end");
+    } else {
+      document.documentElement.classList.remove("is-low-end");
+    }
   }, []);
 
   // Forms state
@@ -201,6 +210,7 @@ export default function App() {
     photoUrl: null as string | null
   });
   const [profileSaving, setProfileSaving] = useState<boolean>(false);
+  const [corroborateSaving, setCorroborateSaving] = useState<boolean>(false);
 
   const handleProfilePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -932,6 +942,7 @@ export default function App() {
       showToast("Please sign in or register to corroborate this issue.", "info");
       return;
     }
+    setCorroborateSaving(true);
     try {
       const res = await fetch(`/api/issues/${duplicateIssue.id}/confirm`, {
         method: "POST",
@@ -939,7 +950,7 @@ export default function App() {
       });
       if (res.ok) {
         const updated = await res.json();
-        setIssues((prev) => prev.map((iss) => (iss.id === duplicateIssue.id ? updated : iss)));
+        setIssues((prev) => prev.map((iss) => (iss.id === duplicateIssue.id ? { ...iss, ...updated } : iss)));
         showToast("You have successfully corroborated this issue! Thank you.", "success");
         setShowDuplicateModal(false);
         setShowNewIssueModal(false);
@@ -960,12 +971,20 @@ export default function App() {
         setAiLoading(false);
         fetchUserProfile();
       } else {
-        const errData = await res.json();
-        showToast(errData.message || "Corroboration failed", "error");
+        let errMsg = "Corroboration failed";
+        try {
+          const errData = await res.json();
+          errMsg = errData.message || errMsg;
+        } catch (_) {
+          // not JSON
+        }
+        showToast(errMsg, "error");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to corroborate issue:", err);
-      showToast("Network error corroborating issue.", "error");
+      showToast(`Network error corroborating issue: ${err.message || err}`, "error");
+    } finally {
+      setCorroborateSaving(false);
     }
   };
 
@@ -1178,7 +1197,7 @@ export default function App() {
     return (
       <div
         key={issue.id}
-        className="rounded-3xl border border-slate-150 bg-white p-6 shadow-sm transition hover:shadow-md hover:-translate-y-0.5 duration-300"
+        className="rounded-3xl border border-slate-150 bg-white p-6 shadow-sm transition hover:shadow-md hover:-translate-y-0.5 duration-300 low-end-simplify-card"
       >
         <div className="flex flex-col justify-between gap-6 sm:flex-row">
           <div className="flex-1">
@@ -1382,12 +1401,12 @@ export default function App() {
     return (
       <div className="space-y-6">
         {/* Profile Card */}
-        <div className="overflow-hidden rounded-3xl border border-slate-150 bg-white shadow-sm">
-          <div className="h-20 bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4"></div>
+        <div className="overflow-hidden rounded-3xl border border-slate-150 bg-white shadow-sm low-end-simplify-card">
+          <div className={`h-20 px-6 py-4 ${isLowEnd ? "bg-blue-600" : "bg-gradient-to-r from-blue-600 to-indigo-600"}`}></div>
           <div className="px-6 pb-6 pt-3 relative">
             <div
               onClick={handleEditProfileClick}
-              className="absolute -top-10 left-6 flex h-16 w-16 items-center justify-center rounded-2xl border-4 border-white bg-blue-50 font-display text-xl font-bold text-blue-600 shadow-md cursor-pointer hover:border-blue-100 hover:scale-105 transition overflow-hidden"
+              className="absolute -top-10 left-6 flex h-16 w-16 items-center justify-center rounded-2xl border-4 border-white bg-blue-50 font-display text-xl font-bold text-blue-600 shadow-md cursor-pointer hover:border-blue-100 hover:scale-105 transition overflow-hidden low-end-simplify-card"
               title="Click to Edit Profile"
             >
               {user.photoUrl ? (
@@ -2246,7 +2265,11 @@ export default function App() {
       {user && (
         <button
           onClick={() => setShowNewIssueModal(true)}
-          className="fixed bottom-8 right-8 z-40 flex h-14 items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-6 font-display text-sm font-bold text-white shadow-xl shadow-blue-600/20 hover:from-blue-700 hover:to-indigo-700 transition active:scale-95"
+          className={`fixed bottom-8 right-8 z-40 flex h-14 items-center gap-2 rounded-full px-6 font-display text-sm font-bold text-white transition active:scale-95 ${
+            isLowEnd
+              ? "bg-blue-600 border border-blue-700 shadow-none"
+              : "bg-gradient-to-r from-blue-600 to-indigo-600 shadow-xl shadow-blue-600/20 hover:from-blue-700 hover:to-indigo-700"
+          }`}
         >
           <Plus size={20} />
           <span>Report Issue</span>
@@ -2684,10 +2707,18 @@ export default function App() {
                   {token ? (
                     <button
                       type="button"
+                      disabled={corroborateSaving}
                       onClick={handleDuplicateCorroborate}
-                      className="w-full flex items-center justify-center gap-2 rounded-2xl bg-amber-500 px-6 py-3.5 font-display text-xs font-bold text-white shadow-lg shadow-amber-500/10 hover:bg-amber-600 transition active:scale-95 cursor-pointer"
+                      className="w-full flex items-center justify-center gap-2 rounded-2xl bg-amber-500 px-6 py-3.5 font-display text-xs font-bold text-white shadow-lg shadow-amber-500/10 hover:bg-amber-600 transition active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <span>✨ Yes, same problem (Corroborate issue)</span>
+                      {corroborateSaving ? (
+                        <>
+                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          <span>Corroborating...</span>
+                        </>
+                      ) : (
+                        <span>✨ Yes, same problem (Corroborate issue)</span>
+                      )}
                     </button>
                   ) : (
                     <div className="text-center p-3 bg-slate-50 rounded-xl border border-slate-150">
@@ -3286,6 +3317,14 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Low-End Device Status Indicator (Debug only) */}
+      {isLowEnd && (
+        <div className="fixed bottom-4 left-4 z-[9999] flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-[10px] font-bold text-white shadow-md border border-amber-400">
+          <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
+          <span>Low-End GPU Mode Active</span>
+        </div>
+      )}
     </div>
   );
 }

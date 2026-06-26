@@ -12,3 +12,97 @@
   --color-slate-300: #cbd5e1;
 }
 
+/* Low-end Android rendering optimizations and fallbacks */
+.is-low-end .low-end-simplify-card {
+  contain: paint !important;
+  box-shadow: none !important;
+  border: 1px solid #cbd5e1 !important; /* solid slate-300 */
+  transform: none !important;
+  transition: none !important;
+}
+
+/* Strip continuous keyframe looping animations on low-end */
+.is-low-end .animate-pulse,
+.is-low-end .animate-bounce,
+.is-low-end .animate-ping,
+.is-low-end .animate-spin {
+  animation: none !important;
+  transform: none !important;
+}
+
+/* Force-stop all transitions and hover/lift animations on low-end devices */
+.is-low-end .transition,
+.is-low-end .transition-all,
+.is-low-end .transition-transform {
+  transition: none !important;
+  transform: none !important;
+}
+
+.is-low-end .hover\:-translate-y-0\.5:hover,
+.is-low-end .hover\:-translate-y-1:hover,
+.is-low-end .hover\:translate-x-0\.5:hover,
+.is-low-end .hover\:scale-105:hover,
+.is-low-end .group:hover .group-hover\:scale-105 {
+  transform: none !important;
+  transition: none !important;
+}
+
+/* Isolate scrolling performance and prevent glitches */
+.is-low-end .low-end-paint-isolation {
+  contain: paint !important;
+}
+
+/* Audit additions: Deeply clean and simplify nested elements on low-end devices */
+
+/* 1. Strip backdrop-blur and backdrop-filters completely on ALL nested elements to avoid compositing cost */
+.is-low-end, 
+.is-low-end * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 2. Replace linear/gradient backgrounds on cards and inner elements with solid colors */
+.is-low-end .bg-linear-to-r,
+.is-low-end .bg-gradient-to-r,
+.is-low-end [class*="bg-gradient-"],
+.is-low-end [class*="bg-linear-"] {
+  background-image: none !important;
+  background-color: #2563eb !important; /* Force brand solid blue */
+}
+
+/* If it is an amber/orange gradient (like community honor roll), fallback to solid amber */
+.is-low-end .bg-linear-to-r.from-amber-500,
+.is-low-end .bg-gradient-to-r.from-amber-500,
+.is-low-end [class*="from-amber-"] {
+  background-color: #f59e0b !important; /* solid amber-500 */
+}
+
+/* 3. Strip box-shadow and text-shadow from EVERY nested child to avoid multi-pass render passes */
+.is-low-end .low-end-simplify-card *,
+.is-low-end button,
+.is-low-end div,
+.is-low-end span,
+.is-low-end img {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+/* 4. Disable transforms, filters, and will-change on all nested icons, text, and badges */
+.is-low-end .low-end-simplify-card *,
+.is-low-end .low-end-simplify-card svg,
+.is-low-end .low-end-simplify-card button,
+.is-low-end .low-end-simplify-card img {
+  transform: none !important;
+  transition: none !important;
+  filter: none !important;
+  will-change: auto !important;
+}
+
+/* 5. Clean up avatar/image elements and their rounded containers to prevent compositing bugs */
+.is-low-end .low-end-simplify-card img,
+.is-low-end .low-end-simplify-card video,
+.is-low-end .low-end-simplify-card .overflow-hidden {
+  contain: paint !important; /* Paint containment keeps the render tree isolated and prevents horizontal repeating glitches */
+}
+
+

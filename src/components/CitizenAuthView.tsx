@@ -1,5 +1,5 @@
-import React, { FormEvent } from "react";
-import { ArrowLeft, Check, Shield } from "lucide-react";
+import React, { FormEvent, useState } from "react";
+import { ArrowLeft, Check, Shield, Eye, EyeOff } from "lucide-react";
 import { BrandLogo } from "./BrandLogo";
 
 interface CitizenAuthViewProps {
@@ -33,6 +33,10 @@ export default function CitizenAuthView({
   onLoginSubmit,
   onRegisterSubmit
 }: CitizenAuthViewProps) {
+  const [showLoginPassword, setShowLoginPassword] = useState<boolean>(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState<boolean>(false);
+  const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState<boolean>(false);
+
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 sm:p-8 font-sans selection:bg-blue-100 selection:text-blue-900">
       {/* CARD CONTAINER (White box, rounded borders) */}
@@ -91,14 +95,24 @@ export default function CitizenAuthView({
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                       Password
                     </label>
-                    <input
-                      type="password"
-                      required
-                      value={loginForm.password}
-                      onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-                      placeholder="Your password"
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-medium outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showLoginPassword ? "text" : "password"}
+                        required
+                        value={loginForm.password}
+                        onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                        placeholder="Your password"
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-4 pr-12 py-3 text-sm font-medium outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowLoginPassword(!showLoginPassword)}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                        title={showLoginPassword ? "Hide password" : "Show password"}
+                      >
+                        {showLoginPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </div>
 
                   <button
@@ -217,28 +231,48 @@ export default function CitizenAuthView({
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                       Password
                     </label>
-                    <input
-                      type="password"
-                      required
-                      value={registerForm.password}
-                      onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
-                      placeholder="Create a strong password"
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-medium outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showRegisterPassword ? "text" : "password"}
+                        required
+                        value={registerForm.password}
+                        onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
+                        placeholder="Create a strong password"
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-4 pr-12 py-3 text-sm font-medium outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegisterPassword(!showRegisterPassword)}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                        title={showRegisterPassword ? "Hide password" : "Show password"}
+                      >
+                        {showRegisterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                       Confirm Password
                     </label>
-                    <input
-                      type="password"
-                      required
-                      value={registerForm.confirmPassword}
-                      onChange={(e) => setRegisterForm({ ...registerForm, confirmPassword: e.target.value })}
-                      placeholder="Re-enter your password"
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-medium outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showRegisterConfirmPassword ? "text" : "password"}
+                        required
+                        value={registerForm.confirmPassword}
+                        onChange={(e) => setRegisterForm({ ...registerForm, confirmPassword: e.target.value })}
+                        placeholder="Re-enter your password"
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 pl-4 pr-12 py-3 text-sm font-medium outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegisterConfirmPassword(!showRegisterConfirmPassword)}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                        title={showRegisterConfirmPassword ? "Hide password" : "Show password"}
+                      >
+                        {showRegisterConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Terms Checkbox */}

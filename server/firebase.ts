@@ -6,6 +6,8 @@ import { getStorage as getAdminStorage } from "firebase-admin/storage";
 import * as fs from "fs";
 import * as path from "path";
 import { randomUUID } from "crypto";
+import { uploadToCloudinary } from "./cloudinary";
+
 
 // Load configuration from firebase-applet-config.json
 let firebaseConfig = {
@@ -61,121 +63,108 @@ try {
 }
 
 export async function uploadFileToFirebaseStorage(file: any): Promise<string> {
-  const ext = path.extname(file.originalname).toLowerCase();
-  const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}${ext}`;
-  const relativePath = `uploads/${safeName}`;
-
-  if (adminApp) {
-    try {
-      const bucket = getAdminStorage(adminApp).bucket();
-      const fileRef = bucket.file(relativePath);
-      const downloadToken = randomUUID();
-
-      // Upload the buffer to the GCS bucket with custom metadata for stable Firebase Storage download URL
-      await fileRef.save(file.buffer, {
-        metadata: {
-          contentType: file.mimetype,
-          metadata: {
-            firebaseStorageDownloadTokens: downloadToken,
-          },
-        },
-      });
-
-      // Try to set metadata explicitly to ensure it propagates correctly
-      try {
-        await fileRef.setMetadata({
-          metadata: {
-            firebaseStorageDownloadTokens: downloadToken,
-          }
-        });
-      } catch (metadataErr) {
-        console.warn("[Firebase Storage] setMetadata custom token warning:", metadataErr);
-      }
-
-      // Return the stable, non-expiring Firebase Storage download URL
-      return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(relativePath)}?alt=media&token=${downloadToken}`;
-    } catch (adminError: any) {
-      const errorMsg = adminError?.message || adminError || "Unauthorized / Storage Bucket Not Initialized";
-      console.log(`[Firebase Storage] GCS Admin SDK upload bypassed (${errorMsg.slice(0, 150)}). Falling back to Web SDK...`);
-    }
+  // 1. Try uploading to Cloudinary first (Primary, permanent free media storage solution)
+  try {
+    const url = await uploadToCloudinary(file);
+    return url;
+  } catch (cloudinaryError: any) {
+    console.warn("[Cloudinary] Upload failed/unconfigured. Falling back to local disk...", cloudinaryError?.message || cloudinaryError);
   }
 
-  // Fallback to Web/Client SDK
+  // 2. Local fallback as a temporary fallback during local development (avoiding Firebase Storage entirely)
   try {
-    const storageRef = ref(storage, relativePath);
-    const uint8 = new Uint8Array(file.buffer);
-    await uploadBytes(storageRef, uint8, {
-      contentType: file.mimetype,
-    });
-    return await getDownloadURL(storageRef);
-  } catch (webError: any) {
-    const errorMsg = webError?.message || webError || "Access Denied / Bucket Unavailable";
-    console.log(`[Firebase Storage] Web SDK upload bypassed (${errorMsg.slice(0, 150)}). Saving file locally to /uploads/...`);
-    try {
-      const uploadDir = path.join(process.cwd(), "uploads");
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-      const localFilePath = path.join(uploadDir, safeName);
-      fs.writeFileSync(localFilePath, file.buffer);
-      console.log(`[Local Storage] Successfully saved file locally: /uploads/${safeName}`);
-      return `/uploads/${safeName}`;
-    } catch (fsError: any) {
-      console.error("[Local Storage] Critical: Failed to write file to local disk:", fsError?.message || fsError);
-      throw new Error("Failed to upload or store file: " + (webError?.message || String(webError)));
+    const ext = path.extname(file.originalname).toLowerCase();
+    const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}${ext}`;
+    const uploadDir = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
     }
+    const localFilePath = path.join(uploadDir, safeName);
+    fs.writeFileSync(localFilePath, file.buffer);
+    console.log(`[Local Storage] Saved file locally: /uploads/${safeName}`);
+    return `/uploads/${safeName}`;
+  } catch (fsError: any) {
+    console.error("[Local Storage] Critical: Failed to write file to local disk:", fsError?.message || fsError);
+    throw new Error("Failed to upload to Cloudinary and failed local disk fallback: " + (fsError?.message || String(fsError)));
   }
 }
 
 export async function migrateSignedUrlsToPermanent() {
-  if (!adminApp) {
-    console.log("[Migration] Skip: Firebase Admin not initialized.");
-    return;
-  }
-
-  console.log("[Migration] Checking Firestore for expiring signed storage URLs to convert...");
+  console.log("[Migration] Checking Firestore for broken local paths and expiring signed storage URLs to convert...");
 
   try {
-    const bucket = getAdminStorage(adminApp).bucket();
-    const bucketName = bucket.name;
-
-    // Helper function to check and migrate a single URL if it is a GCS signed URL
     const migrateUrl = async (url: string): Promise<string> => {
-      if (!url) return url;
-      
-      // Expiring signed URLs contain GoogleAccessId or X-Goog-Algorithm
-      const isSigned = url.includes("GoogleAccessId=") || url.includes("X-Goog-Algorithm=");
-      if (!isSigned) return url;
+      if (!url || url === "null" || url === "undefined") return url;
 
-      // Extract relative path from url. It starts with uploads/
-      const match = url.match(/(uploads\/[^?#\s]+)/);
-      if (!match) return url;
+      // Case 1: Local /uploads/... path (which is now broken because container restarted/redeployed)
+      if (url.startsWith("/uploads/")) {
+        const filename = url.replace("/uploads/", "");
+        const filepath = path.join(process.cwd(), "uploads", filename);
+        
+        if (fs.existsSync(filepath)) {
+          console.log(`[Migration] Local file found: ${filename}. Migrating to Cloudinary...`);
+          try {
+            const fileBuffer = fs.readFileSync(filepath);
+            const ext = path.extname(filename).toLowerCase();
+            let mimeType = "image/jpeg";
+            if (ext === ".png") mimeType = "image/png";
+            else if (ext === ".webp") mimeType = "image/webp";
+            else if (ext === ".gif") mimeType = "image/gif";
 
-      const relativePath = match[1];
-      try {
-        const fileRef = bucket.file(relativePath);
-        const [exists] = await fileRef.exists();
-        if (!exists) {
-          console.warn(`[Migration] File does not exist in bucket: ${relativePath}`);
-          return url;
-        }
+            const uploadedUrl = await uploadToCloudinary({
+              buffer: fileBuffer,
+              mimetype: mimeType,
+              originalname: filename
+            });
 
-        // Generate permanent token and set it in metadata
-        const downloadToken = randomUUID();
-        await fileRef.setMetadata({
-          metadata: {
-            firebaseStorageDownloadTokens: downloadToken,
+            // Clean up migrated local file to save space
+            try {
+              fs.unlinkSync(filepath);
+            } catch (_) {}
+
+            return uploadedUrl;
+          } catch (err: any) {
+            console.error(`[Migration] Failed to upload local file ${filename} to Cloudinary:`, err?.message || err);
+            return url; // Keep original for retry
           }
-        });
-
-        // Construct permanent Firebase Storage download URL
-        const permanentUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(relativePath)}?alt=media&token=${downloadToken}`;
-        console.log(`[Migration] Migrated signed URL to permanent URL for file: ${relativePath}`);
-        return permanentUrl;
-      } catch (err: any) {
-        console.error(`[Migration] Failed to migrate file ${relativePath}:`, err?.message || err);
-        return url;
+        } else {
+          console.log(`[Migration] Local file ${filename} is missing on disk (wipe happened). Marking as Image Unavailable.`);
+          return "https://placehold.co/600x400?text=Image+Unavailable";
+        }
       }
+
+      // Case 2: Firebase Storage/GCS URL (signed or permanent)
+      // Since Firebase Storage is disabled/unusable under Spark, download and migrate them to Cloudinary
+      const isFirebaseStorage = url.includes("firebasestorage.googleapis.com") || url.includes("GoogleAccessId=") || url.includes("X-Goog-Algorithm=");
+      if (isFirebaseStorage) {
+        console.log(`[Migration] Found Firebase Storage / GCS URL: ${url}. Migrating to Cloudinary...`);
+        try {
+          const fetchRes = await fetch(url);
+          if (fetchRes.ok) {
+            const arrayBuffer = await fetchRes.arrayBuffer();
+            const fileBuffer = Buffer.from(arrayBuffer);
+            const ext = path.extname(new URL(url).pathname).toLowerCase() || ".jpg";
+            let mimeType = "image/jpeg";
+            if (ext === ".png") mimeType = "image/png";
+            else if (ext === ".webp") mimeType = "image/webp";
+
+            const uploadedUrl = await uploadToCloudinary({
+              buffer: fileBuffer,
+              mimetype: mimeType,
+              originalname: `migrated-${Date.now()}${ext}`
+            });
+            return uploadedUrl;
+          } else {
+            console.warn(`[Migration] Firebase Storage URL returned status ${fetchRes.status}. Marking as Image Unavailable.`);
+            return "https://placehold.co/600x400?text=Image+Unavailable";
+          }
+        } catch (err: any) {
+          console.error(`[Migration] Failed to migrate GCS URL to Cloudinary:`, err?.message || err);
+          return "https://placehold.co/600x400?text=Image+Unavailable";
+        }
+      }
+
+      return url;
     };
 
     // 1. Migrate issues collection
@@ -200,6 +189,16 @@ export async function migrateSignedUrlsToPermanent() {
         }
         if (updated) {
           data.mediaUrls = newMediaUrls;
+          data.mediaUrl = newMediaUrls[0] || null;
+        }
+      }
+
+      // Check direct mediaUrl if mediaUrls wasn't updated but direct mediaUrl starts with /uploads/ or GCS
+      if (data.mediaUrl && !updated) {
+        const migrated = await migrateUrl(data.mediaUrl);
+        if (migrated !== data.mediaUrl) {
+          updated = true;
+          data.mediaUrl = migrated;
         }
       }
 
@@ -233,10 +232,11 @@ export async function migrateSignedUrlsToPermanent() {
 
       if (updated) {
         await updateDoc(doc(db, "issues", issueDoc.id), {
+          mediaUrl: data.mediaUrl || null,
           mediaUrls: data.mediaUrls || [],
           statusHistory: data.statusHistory || [],
         });
-        console.log(`[Migration] Updated issue document ${issueDoc.id} with permanent URLs.`);
+        console.log(`[Migration] Updated issue document ${issueDoc.id} with migrated URLs.`);
       }
     }
 
@@ -254,12 +254,12 @@ export async function migrateSignedUrlsToPermanent() {
           await updateDoc(doc(db, "users", userDoc.id), {
             photoUrl: migrated,
           });
-          console.log(`[Migration] Updated user profile photo URL for user ${userDoc.id} to permanent URL.`);
+          console.log(`[Migration] Updated user profile photo URL for user ${userDoc.id} to migrated URL.`);
         }
       }
     }
 
-    console.log("[Migration] Migration check completed successfully.");
+    console.log("[Migration] Cloudinary migration check completed successfully.");
   } catch (err: any) {
     console.error("[Migration] Error during migration check:", err?.message || err);
   }
