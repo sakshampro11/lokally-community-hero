@@ -1257,12 +1257,9 @@ export default function App() {
 
     return matchesCategory && matchesPriority && matchesLocation;
   }).sort((a, b) => {
-    const aConf = a.confirmations || 0;
-    const bConf = b.confirmations || 0;
-    if (bConf !== aConf) {
-      return bConf - aConf; // More corroborations come first
-    }
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    const aTime = new Date(a.lastActivityAt || a.updatedAt || a.createdAt).getTime();
+    const bTime = new Date(b.lastActivityAt || b.updatedAt || b.createdAt).getTime();
+    return bTime - aTime;
   });
 
   const myReports = user ? issues.filter((iss) => iss.reporterId === user.id) : [];
@@ -1376,6 +1373,12 @@ export default function App() {
                   👥 {issue.confirmations} {issue.confirmations === 1 ? "corroborator" : "corroborators"}
                 </span>
               )}
+
+              {user && issue.confirmedBy?.includes(user.id) && (
+                <span className="rounded-full bg-teal-50 border border-teal-100 px-3 py-1 text-[11px] font-bold text-teal-600 tracking-wide uppercase flex items-center gap-1 animate-pulse">
+                  ✓ Corroborated
+                </span>
+              )}
             </div>
           </div>
 
@@ -1426,25 +1429,33 @@ export default function App() {
             </button>
 
             {/* Confirm exists */}
-            {user.id !== issue.reporterId && (
-              <button
-                onClick={() => handleConfirm(issue.id)}
-                disabled={issue.confirmedBy?.includes(user.id)}
-                className={`flex items-center gap-1.5 rounded-xl border px-4 py-2 text-xs font-bold transition ${
-                  issue.confirmedBy?.includes(user.id)
-                    ? "bg-emerald-50 border-emerald-100 text-emerald-600 cursor-default"
-                    : "border-slate-200 bg-slate-50/50 hover:bg-purple-50 hover:border-purple-100 hover:text-purple-600 text-slate-600"
-                }`}
-              >
-                <Check size={13} />
-                <span>
-                  {issue.confirmedBy?.includes(user.id)
-                    ? "Confirmed Verified"
-                    : "Confirm still happening"}{" "}
-                  ({issue.confirmations || 0})
-                </span>
-              </button>
-            )}
+            <button
+              onClick={() => {
+                if (user.id === issue.reporterId) {
+                  showToast("You cannot confirm your own report.", "info");
+                  return;
+                }
+                handleConfirm(issue.id);
+              }}
+              disabled={issue.confirmedBy?.includes(user.id) || user.id === issue.reporterId}
+              className={`flex items-center gap-1.5 rounded-xl border px-4 py-2 text-xs font-bold transition ${
+                issue.confirmedBy?.includes(user.id)
+                  ? "bg-emerald-50 border-emerald-100 text-emerald-600 cursor-default"
+                  : user.id === issue.reporterId
+                  ? "border-slate-200 bg-slate-50/50 text-slate-400 cursor-not-allowed opacity-60"
+                  : "border-slate-200 bg-slate-50/50 hover:bg-purple-50 hover:border-purple-100 hover:text-purple-600 text-slate-600"
+              }`}
+            >
+              <Check size={13} />
+              <span>
+                {issue.confirmedBy?.includes(user.id)
+                  ? "Confirmed Verified"
+                  : user.id === issue.reporterId
+                  ? "My Report"
+                  : "Confirm still happening"}{" "}
+                ({issue.confirmations || 0})
+              </span>
+            </button>
           </div>
 
           <button
@@ -2331,6 +2342,7 @@ export default function App() {
               currentUserCoords={currentUserCoords}
               locationFilterMode={locationFilterMode}
               setLocationFilterMode={setLocationFilterMode}
+              currentUser={user}
             />
           )}
 

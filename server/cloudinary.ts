@@ -1,16 +1,19 @@
 import { v2 as cloudinary } from "cloudinary";
 
 let isConfigured = false;
+let isBroken = false;
 
 export function configureCloudinary() {
+  if (isBroken) return false;
   if (isConfigured) return true;
 
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
 
-  if (!cloudName || !apiKey || !apiSecret) {
-    console.warn("[Cloudinary] Credentials missing. Cloudinary uploads will be bypassed.");
+  if (!cloudName || !apiKey || !apiSecret || cloudName.includes("your_") || apiKey.includes("your_") || apiSecret.includes("your_")) {
+    console.warn("[Cloudinary] Credentials missing or generic placeholder detected. Cloudinary uploads will be bypassed.");
+    isBroken = true;
     return false;
   }
 
@@ -31,8 +34,8 @@ export function configureCloudinary() {
  */
 export async function uploadToCloudinary(file: { buffer: Buffer; mimetype: string; originalname: string }): Promise<string> {
   const configured = configureCloudinary();
-  if (!configured) {
-    throw new Error("Cloudinary environment variables are missing (CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET). Please add them to your environment secrets.");
+  if (!configured || isBroken) {
+    throw new Error("Cloudinary is unconfigured, using placeholders, or has failed previously.");
   }
 
   return new Promise((resolve, reject) => {
@@ -44,7 +47,12 @@ export async function uploadToCloudinary(file: { buffer: Buffer; mimetype: strin
       (error, result) => {
         if (error) {
           console.error("[Cloudinary] Upload stream error:", error);
-          reject(new Error(`Cloudinary upload failed: ${error.message}`));
+          const errMsg = error.message || String(error);
+          if (error.http_code === 403 || error.http_code === 401 || errMsg.includes("403") || errMsg.includes("credentials") || errMsg.includes("key")) {
+            console.warn("[Cloudinary] Cloudinary returned 403/credential error. Marking Cloudinary as unavailable.");
+            isBroken = true;
+          }
+          reject(new Error(`Cloudinary upload failed: ${error.message || errMsg}`));
         } else if (result && result.secure_url) {
           console.log("[Cloudinary] Upload succeeded. Secure URL:", result.secure_url);
           resolve(result.secure_url);

@@ -6,3 +6,17 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local uploads and temporary files
+uploads/
+
+# Editor and IDE configurations
+.vscode/
+.idea/
+
+# Local databases and SQLite files
+*.db
+*.sqlite
+
+# OS generated files
+Thumbs.db

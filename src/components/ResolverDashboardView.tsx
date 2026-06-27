@@ -80,12 +80,9 @@ export default function ResolverDashboardView({
       return iss.status === "Resolved";
     }
   }).sort((a, b) => {
-    const aConf = a.confirmations || 0;
-    const bConf = b.confirmations || 0;
-    if (bConf !== aConf) {
-      return bConf - aConf; // More corroborations/confirmations first
-    }
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    const aTime = new Date(a.lastActivityAt || a.updatedAt || a.createdAt).getTime();
+    const bTime = new Date(b.lastActivityAt || b.updatedAt || b.createdAt).getTime();
+    return bTime - aTime;
   });
 
   // Automatically select the first issue as active when feed tab or issues change
@@ -529,6 +526,16 @@ export default function ResolverDashboardView({
                           }`}>
                             {activeIssue.status === "Reported" ? "PENDING" : activeIssue.status === "In Progress" ? "IN PROGRESS" : activeIssue.status.toUpperCase()}
                           </span>
+                          {(activeIssue.confirmations || 0) > 0 && (
+                            <span className="rounded-md bg-violet-50 border border-violet-100 px-2.5 py-1 text-[10px] font-bold text-violet-600 tracking-wide uppercase flex items-center gap-1">
+                              👥 {activeIssue.confirmations} {activeIssue.confirmations === 1 ? "corroborator" : "corroborators"}
+                            </span>
+                          )}
+                          {user && activeIssue.confirmedBy?.includes(user.id) && (
+                            <span className="rounded-md bg-teal-50 border border-teal-100 px-2.5 py-1 text-[10px] font-bold text-teal-600 tracking-wide uppercase">
+                              ✓ Corroborated
+                            </span>
+                          )}
                         </div>
                         <span className="text-xs font-bold text-slate-400 shrink-0">
                           {(() => {

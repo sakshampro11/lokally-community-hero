@@ -49,6 +49,7 @@ export const storage = getStorage(app);
 
 // Initialize Firebase Admin safely
 let adminApp: any = null;
+let isFirebaseStorageBroken = false;
 try {
   if (getAdminApps().length === 0) {
     adminApp = initializeAdminApp({
@@ -72,7 +73,7 @@ export async function uploadFileToFirebaseStorage(file: any): Promise<string> {
   }
 
   // 2. Secondary fallback: Firebase Storage via Admin SDK (Permanent Cloud Storage)
-  if (adminApp && firebaseConfig.storageBucket) {
+  if (adminApp && firebaseConfig.storageBucket && !isFirebaseStorageBroken) {
     try {
       const ext = path.extname(file.originalname).toLowerCase();
       const safeName = `issues/${Date.now()}-${Math.random().toString(36).slice(2, 9)}${ext}`;
@@ -95,9 +96,14 @@ export async function uploadFileToFirebaseStorage(file: any): Promise<string> {
       return downloadUrl;
     } catch (fbStorageError: any) {
       console.error("[Firebase Storage Admin] Failed fallback upload:", fbStorageError?.message || fbStorageError);
+      const errMsg = fbStorageError?.message || String(fbStorageError);
+      if (errMsg.includes("403") || errMsg.includes("Forbidden") || errMsg.includes("permission") || errMsg.includes("credential") || errMsg.includes("bucket")) {
+        console.warn("[Firebase Storage Admin] Firebase Storage returned 403/credential/permission error. Marking Firebase Storage as unavailable.");
+        isFirebaseStorageBroken = true;
+      }
     }
   } else {
-    console.warn("[Firebase Storage Admin] Skipping fallback because Firebase Admin or storageBucket is not configured.");
+    console.warn("[Firebase Storage Admin] Skipping fallback because Firebase Admin is unconfigured, disabled, or marked as unavailable.");
   }
 
   // 3. Robust Permanent Fallback: Convert to small compressed base64 URI using Jimp

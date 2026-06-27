@@ -60,4 +60,6 @@ export interface Issue {
   upvotes: number;
   createdAt: string;
   updatedAt: string | null;
+  lastActivityAt?: string;
+  lastCorroboratedAt?: string;
 }

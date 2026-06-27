@@ -286,8 +286,8 @@ router.post("/check-duplicate", upload.array("media", 5), async (req: any, res: 
       const data = doc.data();
       if (data.status === "Resolved") continue;
 
-      // Match category/issueType
-      if (data.issueType !== issueType) continue;
+      // Match category/issueType case-insensitively for robustness
+      if (data.issueType?.trim().toLowerCase() !== issueType?.trim().toLowerCase()) continue;
 
       // Calculate distance
       const itemLat = data.location?.lat;
@@ -311,6 +311,40 @@ router.post("/check-duplicate", upload.array("media", 5), async (req: any, res: 
     // Limit to top 3 closest candidates to avoid giant payloads and ensure fast responses
     const activeCandidates = candidates.slice(0, 3);
     console.log(`[Duplicate Check] Selected ${activeCandidates.length} closest candidates for comparison.`);
+
+    // 1. Direct deterministic match check (Immediate matching for exact same/highly-similar placeholder text or descriptions)
+    let directDuplicateMatch: any = null;
+    const cleanNewTitle = title?.trim().toLowerCase();
+    const cleanNewDesc = description?.trim().toLowerCase();
+
+    for (const c of activeCandidates) {
+      const cleanCandidateTitle = c.title?.trim().toLowerCase();
+      const cleanCandidateDesc = c.description?.trim().toLowerCase();
+
+      // Check if title or description is an exact match (useful for duplicates or test submissions)
+      const exactTitleMatch = cleanNewTitle && cleanCandidateTitle && cleanNewTitle === cleanCandidateTitle;
+      const exactDescMatch = cleanNewDesc && cleanCandidateDesc && cleanNewDesc === cleanCandidateDesc;
+
+      if (exactTitleMatch || exactDescMatch) {
+        directDuplicateMatch = c;
+        break;
+      }
+    }
+
+    if (directDuplicateMatch) {
+      console.log(`[Duplicate Check] Direct deterministic duplicate match found: ${directDuplicateMatch.id}`);
+      return res.json({
+        duplicate: {
+          id: directDuplicateMatch.id,
+          title: directDuplicateMatch.title,
+          description: directDuplicateMatch.description,
+          mediaUrl: directDuplicateMatch.mediaUrl,
+          reason: `An existing unresolved report with the exact same ${
+            (cleanNewTitle && directDuplicateMatch.title?.trim().toLowerCase() === cleanNewTitle) ? 'title' : 'description'
+          } ("${directDuplicateMatch.title}") is already reported nearby.`
+        }
+      });
+    }
 
     // Prepare Gemini payload
     if (!process.env.GEMINI_API_KEY) {
@@ -338,6 +372,8 @@ Please compare the new issue's description (and optional photo) against each can
 Determine if the new issue describes the exact same real-world occurrence/problem (e.g., the same pothole, the same broken streetlight, the same water leakage) as one of the candidates.
 Note: A pothole and a broken streetlight at the same location are NOT duplicates. They must describe the exact same physical problem.
 
+CRITICAL RULE: If the new issue has the exact same or highly similar title and description as an existing nearby candidate (such as test or placeholder text, e.g. "alfa"/"afa", "test", etc.), they are 100% duplicate submissions and you MUST mark them as duplicates (isDuplicate: true).
+
 Return a JSON object with:
 - "isDuplicate": boolean (true if a duplicate is found, false otherwise)
 - "duplicateId": string or null (the ID of the matching candidate issue, if isDuplicate is true)
@@ -360,11 +396,26 @@ Return a JSON object with:
       }
     }
 
-    // Fetch candidate images in parallel
+    // Fetch candidate images in parallel (supporting inline base64 and URLs with robust string type checking)
     const imagePromises = activeCandidates.map(async (c, idx) => {
-      if (!c.mediaUrl) return null;
+      if (!c.mediaUrl || typeof c.mediaUrl !== "string") return null;
 
-      if (c.mediaUrl.startsWith("http")) {
+      if (c.mediaUrl.startsWith("data:image/")) {
+        try {
+          const match = c.mediaUrl.match(/^data:([^;]+);base64,(.*)$/);
+          if (match) {
+            console.log(`[Duplicate Check] Candidate #${idx + 1} has inline base64 image.`);
+            return {
+              id: c.id,
+              idx,
+              data: match[2],
+              mimeType: match[1]
+            };
+          }
+        } catch (err) {
+          console.error(`[Duplicate Check] Failed to parse candidate #${idx + 1} inline base64 image:`, err);
+        }
+      } else if (c.mediaUrl.startsWith("http")) {
         try {
           console.log(`[Duplicate Check] Fetching candidate #${idx + 1} image: ${c.mediaUrl}`);
           const fetchRes = await withTimeout(
@@ -488,7 +539,13 @@ Return a JSON object with:
     }
 
     const responseText = response.text || "";
-    const result = JSON.parse(responseText.trim());
+    let jsonStr = responseText.trim();
+    // Safely remove any markdown code block wrappers (e.g., ```json ... ```) returned by the model
+    if (jsonStr.startsWith("```")) {
+      jsonStr = jsonStr.replace(/^```(?:json)?\n?/i, "");
+      jsonStr = jsonStr.replace(/\n?```$/, "");
+    }
+    const result = JSON.parse(jsonStr.trim());
 
     if (result.isDuplicate && result.duplicateId) {
       const match = activeCandidates.find((c) => c.id === result.duplicateId);
@@ -579,6 +636,7 @@ router.post("/", upload.array("media", 5), async (req: any, res: Response) => {
       upvotes: 0,
       createdAt: new Date().toISOString(),
       updatedAt: null,
+      lastActivityAt: new Date().toISOString(),
     };
 
     const docRef = await addDoc(collection(db, "issues"), issueData);
@@ -858,6 +916,8 @@ router.post("/:id/confirm", authenticateToken as any, async (req: AuthenticatedR
       confirmations: newConfirmations,
       confirmedBy: nextConfirmedBy,
       updatedAt: new Date().toISOString(),
+      lastActivityAt: new Date().toISOString(),
+      lastCorroboratedAt: new Date().toISOString(),
     };
 
     // Auto-verify if confirms >= 3
