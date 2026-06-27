@@ -526,11 +526,9 @@ export default function ResolverDashboardView({
                           }`}>
                             {activeIssue.status === "Reported" ? "PENDING" : activeIssue.status === "In Progress" ? "IN PROGRESS" : activeIssue.status.toUpperCase()}
                           </span>
-                          {(activeIssue.confirmations || 0) > 0 && (
-                            <span className="rounded-md bg-violet-50 border border-violet-100 px-2.5 py-1 text-[10px] font-bold text-violet-600 tracking-wide uppercase flex items-center gap-1">
-                              👥 {activeIssue.confirmations} {activeIssue.confirmations === 1 ? "corroborator" : "corroborators"}
-                            </span>
-                          )}
+                          <span className="rounded-md bg-violet-50 border border-violet-100 px-2.5 py-1 text-[10px] font-bold text-violet-600 tracking-wide uppercase flex items-center gap-1">
+                            👥 {activeIssue.confirmations || 0} {(activeIssue.confirmations || 0) === 1 ? "corroborator" : "corroborators"}
+                          </span>
                           {user && activeIssue.confirmedBy?.includes(user.id) && (
                             <span className="rounded-md bg-teal-50 border border-teal-100 px-2.5 py-1 text-[10px] font-bold text-teal-600 tracking-wide uppercase">
                               ✓ Corroborated

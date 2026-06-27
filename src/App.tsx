@@ -171,6 +171,7 @@ export default function App() {
   const [duplicateIssue, setDuplicateIssue] = useState<any | null>(null);
   const [showDuplicateModal, setShowDuplicateModal] = useState<boolean>(false);
   const [checkingDuplicate, setCheckingDuplicate] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Location filtering states
   const [currentUserCoords, setCurrentUserCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -926,6 +927,7 @@ export default function App() {
       }
     }
 
+    setIsSubmitting(true);
     try {
       const res = await fetch("/api/issues", {
         method: "POST",
@@ -956,6 +958,8 @@ export default function App() {
     } catch (err) {
       console.error("Failed to submit issue:", err);
       showToast("Error submitting issue.", "error");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1368,11 +1372,9 @@ export default function App() {
                 </span>
               )}
 
-              {(issue.confirmations || 0) > 0 && (
-                <span className="rounded-full bg-violet-50 border border-violet-100 px-3 py-1 text-[11px] font-bold text-violet-600 tracking-wide uppercase flex items-center gap-1">
-                  👥 {issue.confirmations} {issue.confirmations === 1 ? "corroborator" : "corroborators"}
-                </span>
-              )}
+              <span className="rounded-full bg-violet-50 border border-violet-100 px-3 py-1 text-[11px] font-bold text-violet-600 tracking-wide uppercase flex items-center gap-1">
+                👥 {issue.confirmations || 0} {(issue.confirmations || 0) === 1 ? "corroborator" : "corroborators"}
+              </span>
 
               {user && issue.confirmedBy?.includes(user.id) && (
                 <span className="rounded-full bg-teal-50 border border-teal-100 px-3 py-1 text-[11px] font-bold text-teal-600 tracking-wide uppercase flex items-center gap-1 animate-pulse">
@@ -2688,13 +2690,18 @@ export default function App() {
                     </button>
                     <button
                       type="submit"
-                      disabled={checkingDuplicate}
+                      disabled={checkingDuplicate || isSubmitting}
                       className="rounded-xl bg-blue-600 px-6 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                       {checkingDuplicate ? (
                         <>
                           <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
                           <span>AI Scanning Duplicates...</span>
+                        </>
+                      ) : isSubmitting ? (
+                        <>
+                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          <span>Filing Report...</span>
                         </>
                       ) : (
                         <span>Report Issue</span>

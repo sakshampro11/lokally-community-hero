@@ -496,11 +496,9 @@ export default function MapView({
                       >
                         {issue.issueType}
                       </span>
-                      {issue.confirmations > 0 && (
-                        <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-violet-50 border border-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-600">
-                          👥 {issue.confirmations} {issue.confirmations === 1 ? "corroborator" : "corroborators"}
-                        </span>
-                      )}
+                      <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-violet-50 border border-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-600">
+                        👥 {issue.confirmations || 0} {(issue.confirmations || 0) === 1 ? "corroborator" : "corroborators"}
+                      </span>
                       {currentUser && issue.confirmedBy?.includes(currentUser.id) && (
                         <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-100 px-1.5 py-0.5 text-[9px] font-bold text-teal-600 uppercase">
                           ✓ Corroborated
