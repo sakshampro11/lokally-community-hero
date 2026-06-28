@@ -5,6 +5,7 @@ import { collection, doc, getDoc, getDocs, query, where, limit, addDoc, updateDo
 import { db, uploadFileToFirebaseStorage } from "./firebase";
 import { authenticateToken, AuthenticatedRequest } from "./middleware";
 import { upload } from "./upload";
+import { globalCache } from "./cache";
 
 const router = Router();
 
@@ -119,6 +120,8 @@ router.post("/register", async (req: any, res: Response) => {
         console.error("Error rewarding referrer:", e);
       }
     }
+
+    globalCache.invalidateAll();
 
     const token = jwt.sign(
       { userId: docRef.id },
@@ -264,6 +267,7 @@ router.put("/me", authenticateToken as any, async (req: AuthenticatedRequest, re
     }
 
     await updateDoc(userDocRef, updates);
+    globalCache.invalidateAll();
 
     const updatedDoc = await getDoc(userDocRef);
     const updated = updatedDoc.data() || {};
@@ -303,6 +307,12 @@ router.post("/upload-photo", authenticateToken as any, upload.single("photo"), a
     }
 
     const photoUrl = await uploadFileToFirebaseStorage(req.file);
+    
+    // Save to Firestore user profile document immediately
+    const userDocRef = doc(db, "users", userId);
+    await updateDoc(userDocRef, { photoUrl });
+    globalCache.invalidateAll();
+
     return res.json({ photoUrl });
   } catch (error: any) {
     console.error("Error in uploading profile photo:", error);
@@ -324,6 +334,13 @@ router.get("/leaderboard", authenticateToken as any, async (req: AuthenticatedRe
       return res.status(404).json({ message: "User not found" });
     }
     const currentUserRole = curUserDoc.data().role || "citizen";
+
+    const cacheKey = `leaderboard_${currentUserRole}`;
+    const cachedData = globalCache.get<any[]>(cacheKey);
+    if (cachedData) {
+      console.log(`[Cache] Serving leaderboard for role "${currentUserRole}" from cache.`);
+      return res.json(cachedData);
+    }
 
     const usersRef = collection(db, "users");
     const snapshot = await getDocs(usersRef);
@@ -348,6 +365,7 @@ router.get("/leaderboard", authenticateToken as any, async (req: AuthenticatedRe
 
     // Sort by points descending
     list.sort((a, b) => b.points - a.points);
+    globalCache.set(cacheKey, list);
     return res.json(list);
   } catch (error: any) {
     console.error("Error fetching leaderboard:", error);

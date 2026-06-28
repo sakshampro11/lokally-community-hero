@@ -175,6 +175,12 @@ export async function uploadFileToFirebaseStorage(file: any): Promise<string> {
 }
 
 export async function migrateSignedUrlsToPermanent() {
+  const lockfilePath = path.join(process.cwd(), ".migration_completed");
+  if (fs.existsSync(lockfilePath)) {
+    console.log("[Migration] Lockfile .migration_completed exists. Skipping Firestore URL migration scan to save quota.");
+    return;
+  }
+
   console.log("[Migration] Checking Firestore for broken local paths and expiring signed storage URLs to convert...");
 
   try {
@@ -347,6 +353,12 @@ export async function migrateSignedUrlsToPermanent() {
     }
 
     console.log("[Migration] Cloudinary migration check completed successfully.");
+    try {
+      fs.writeFileSync(lockfilePath, JSON.stringify({ completedAt: new Date().toISOString() }, null, 2), "utf8");
+      console.log("[Migration] Created lockfile .migration_completed.");
+    } catch (fsErr: any) {
+      console.error("[Migration] Failed to create lockfile:", fsErr?.message || fsErr);
+    }
   } catch (err: any) {
     console.error("[Migration] Error during migration check:", err?.message || err);
   }

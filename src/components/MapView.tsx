@@ -552,38 +552,7 @@ export default function MapView({
       <div className="relative flex-1 h-full w-full bg-slate-100">
         <div id="leaflet-map-canvas" className="h-full w-full z-0" ref={mapContainerRef}></div>
 
-        {/* Category Legend (Overlay) */}
-        <div className="absolute bottom-5 right-5 z-[500] hidden rounded-2xl border border-slate-100 bg-white p-4 shadow-xl sm:block max-w-xs">
-          <h3 className="font-display text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-2.5">
-            Color Legend
-          </h3>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-            <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#f97316] shadow-sm"></span>
-              Pothole / Road
-            </div>
-            <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#3b82f6] shadow-sm"></span>
-              Water Supply
-            </div>
-            <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#eab308] shadow-sm"></span>
-              Electricity
-            </div>
-            <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#22c55e] shadow-sm"></span>
-              Waste / Sanitation
-            </div>
-            <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#a855f7] shadow-sm"></span>
-              Streetlight
-            </div>
-            <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#94a3b8] shadow-sm"></span>
-              Other
-            </div>
-          </div>
-        </div>
+
 
         {/* Mobile Toggle Button */}
         <button

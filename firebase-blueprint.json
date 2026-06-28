@@ -45,6 +45,8 @@
         "reporterId": { "type": "string" },
         "confirmations": { "type": "integer" },
         "confirmedBy": { "type": "array" },
+        "stillHappeningCount": { "type": "integer" },
+        "stillHappeningBy": { "type": "array" },
         "commentsList": { "type": "array" },
         "comments": { "type": "integer" },
         "createdAt": { "type": "string", "format": "date-time" },

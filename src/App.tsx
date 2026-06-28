@@ -47,6 +47,7 @@ import CitizenAuthView from "./components/CitizenAuthView";
 import ResolverAuthView from "./components/ResolverAuthView";
 import ResolverDashboardView from "./components/ResolverDashboardView";
 import MapPicker from "./components/MapPicker";
+import CustomDropdown from "./components/CustomDropdown";
 
 function getDistanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000; // Earth's radius in meters
@@ -219,6 +220,11 @@ export default function App() {
     if (!file) return;
     if (!token) return;
 
+    // Generate local preview URL instantly for supreme responsive UX
+    const localPreviewUrl = URL.createObjectURL(file);
+    setProfileForm(prev => ({ ...prev, photoUrl: localPreviewUrl }));
+    setUser(prev => prev ? { ...prev, photoUrl: localPreviewUrl } : null);
+
     const formData = new FormData();
     formData.append("photo", file);
 
@@ -235,20 +241,28 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setProfileForm(prev => ({ ...prev, photoUrl: data.photoUrl }));
+        setUser(prev => prev ? { ...prev, photoUrl: data.photoUrl } : null);
         showToast("Photo uploaded successfully!");
       } else {
         const errData = await res.json();
         showToast(errData.message || "Failed to upload photo", "error");
+        // Revert on failure to the actual user's photoUrl
+        setProfileForm(prev => ({ ...prev, photoUrl: user?.photoUrl || null }));
+        setUser(prev => prev ? { ...prev, photoUrl: user?.photoUrl || null } : null);
       }
     } catch (err) {
       console.error("Error uploading profile photo:", err);
       showToast("An error occurred during photo upload", "error");
+      // Revert on failure to the actual user's photoUrl
+      setProfileForm(prev => ({ ...prev, photoUrl: user?.photoUrl || null }));
+      setUser(prev => prev ? { ...prev, photoUrl: user?.photoUrl || null } : null);
     }
   };
 
   // Notification states
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState<boolean>(false);
   const notificationsRef = useRef<HTMLDivElement>(null);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -265,6 +279,27 @@ export default function App() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [showNotificationsDropdown]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        showProfileDropdown &&
+        profileDropdownRef.current &&
+        !profileDropdownRef.current.contains(event.target as Node)
+      ) {
+        // Prevent closing and immediately reopening if the click was on the trigger itself
+        const trigger = document.getElementById("profile-trigger-btn");
+        if (trigger && trigger.contains(event.target as Node)) {
+          return;
+        }
+        setShowProfileDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showProfileDropdown]);
 
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => {
     try {
@@ -1107,6 +1142,34 @@ export default function App() {
     }
   };
 
+  // Confirm issue is still happening (standalone freshness signal)
+  const handleStillHappening = async (issueId: string) => {
+    if (!token) {
+      showToast("Please sign in or register to confirm this issue is still happening.", "info");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/issues/${issueId}/still-happening`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setIssues((prev) => prev.map((iss) => (iss.id === issueId ? updated : iss)));
+        if (activeIssue?.id === issueId) {
+          setActiveIssue(updated);
+        }
+        showToast("Freshness confirmed! Thank you.", "success");
+      } else {
+        const errData = await res.json();
+        showToast(errData.message || "Failed to confirm freshness.", "error");
+      }
+    } catch (err) {
+      console.error("Failed to confirm freshness:", err);
+      showToast("Network error confirming freshness.", "error");
+    }
+  };
+
   // Post comment
   const handlePostComment = async (e: FormEvent) => {
     e.preventDefault();
@@ -1434,28 +1497,28 @@ export default function App() {
             <button
               onClick={() => {
                 if (user.id === issue.reporterId) {
-                  showToast("You cannot confirm your own report.", "info");
+                  showToast("You cannot confirm freshness of your own report.", "info");
                   return;
                 }
-                handleConfirm(issue.id);
+                handleStillHappening(issue.id);
               }}
-              disabled={issue.confirmedBy?.includes(user.id) || user.id === issue.reporterId}
+              disabled={user.id === issue.reporterId}
               className={`flex items-center gap-1.5 rounded-xl border px-4 py-2 text-xs font-bold transition ${
-                issue.confirmedBy?.includes(user.id)
+                issue.stillHappeningBy?.some((entry: any) => entry.userId === user.id)
                   ? "bg-emerald-50 border-emerald-100 text-emerald-600 cursor-default"
                   : user.id === issue.reporterId
                   ? "border-slate-200 bg-slate-50/50 text-slate-400 cursor-not-allowed opacity-60"
-                  : "border-slate-200 bg-slate-50/50 hover:bg-purple-50 hover:border-purple-100 hover:text-purple-600 text-slate-600"
+                  : "border-slate-200 bg-slate-50/50 hover:bg-emerald-50 hover:border-emerald-100 hover:text-emerald-600 text-slate-600"
               }`}
             >
               <Check size={13} />
               <span>
-                {issue.confirmedBy?.includes(user.id)
-                  ? "Confirmed Verified"
+                {issue.stillHappeningBy?.some((entry: any) => entry.userId === user.id)
+                  ? "Confirmed Still Happening"
                   : user.id === issue.reporterId
                   ? "My Report"
                   : "Confirm still happening"}{" "}
-                ({issue.confirmations || 0})
+                ({issue.stillHappeningCount || 0})
               </span>
             </button>
           </div>
@@ -1932,6 +1995,7 @@ export default function App() {
                   {/* Clickable Profile Settings & Dropdown (Desktop/Tablet) */}
                   <div className="hidden sm:block relative">
                     <div
+                      id="profile-trigger-btn"
                       onClick={() => {
                         if (showProfileDropdown) {
                           setShowProfileDropdown(false);
@@ -1964,7 +2028,7 @@ export default function App() {
                     </div>
 
                     {showProfileDropdown && (
-                      <div className="absolute right-0 mt-3 w-80 rounded-2xl border border-slate-150 bg-white p-5 shadow-2xl z-50">
+                      <div ref={profileDropdownRef} className="absolute right-0 mt-3 w-80 rounded-2xl border border-slate-150 bg-white p-5 shadow-2xl z-50">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3.5">
                           <div>
                             <h4 className="font-display text-sm font-extrabold text-slate-900">My Profile Settings</h4>
@@ -2232,39 +2296,35 @@ export default function App() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 px-2.5 py-2 rounded-xl shadow-xs transition hover:border-slate-300 w-full">
-                      <Filter size={13} className="text-slate-400 shrink-0" />
-                      <select
-                        value={categoryFilter}
-                        onChange={(e) => setCategoryFilter(e.target.value)}
-                        className="appearance-none bg-transparent text-[11px] font-extrabold text-slate-700 outline-none cursor-pointer pr-4 focus:outline-none flex-1 min-w-0"
-                      >
-                        <option value="All">All Categories</option>
-                        <option value="Water">Water Supply</option>
-                        <option value="Electricity">Electricity</option>
-                        <option value="Road">Road Condition</option>
-                        <option value="Sanitation">Sanitation</option>
-                        <option value="Pothole">Potholes</option>
-                        <option value="Streetlight">Streetlights</option>
-                        <option value="Other">Other</option>
-                      </select>
-                      <ChevronDown size={11} className="text-slate-400 pointer-events-none shrink-0" />
-                    </div>
+                    <CustomDropdown
+                      value={categoryFilter}
+                      onChange={setCategoryFilter}
+                      options={[
+                        { value: "All", label: "All Categories" },
+                        { value: "Water", label: "Water Supply" },
+                        { value: "Electricity", label: "Electricity" },
+                        { value: "Road", label: "Road Condition" },
+                        { value: "Sanitation", label: "Sanitation" },
+                        { value: "Pothole", label: "Potholes" },
+                        { value: "Streetlight", label: "Streetlights" },
+                        { value: "Other", label: "Other" },
+                      ]}
+                      size="compact"
+                      leftIcon={<Filter size={13} />}
+                    />
 
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 px-2.5 py-2 rounded-xl shadow-xs transition hover:border-slate-300 w-full">
-                      <AlertTriangle size={13} className="text-slate-400 shrink-0" />
-                      <select
-                        value={priorityFilter}
-                        onChange={(e) => setPriorityFilter(e.target.value)}
-                        className="appearance-none bg-transparent text-[11px] font-extrabold text-slate-700 outline-none cursor-pointer pr-4 focus:outline-none flex-1 min-w-0"
-                      >
-                        <option value="All">All Priority</option>
-                        <option value="High">High</option>
-                        <option value="Medium">Medium</option>
-                        <option value="Low">Low</option>
-                      </select>
-                      <ChevronDown size={11} className="text-slate-400 pointer-events-none shrink-0" />
-                    </div>
+                    <CustomDropdown
+                      value={priorityFilter}
+                      onChange={setPriorityFilter}
+                      options={[
+                        { value: "All", label: "All Priority" },
+                        { value: "High", label: "High" },
+                        { value: "Medium", label: "Medium" },
+                        { value: "Low", label: "Low" },
+                      ]}
+                      size="compact"
+                      leftIcon={<AlertTriangle size={13} />}
+                    />
                   </div>
                 </div>
               </div>
@@ -2573,22 +2633,22 @@ export default function App() {
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                         Category
                       </label>
-                      <select
-                        required
+                      <CustomDropdown
                         value={newIssue.issueType}
-                        onChange={(e) => setNewIssue({ ...newIssue, issueType: e.target.value })}
-                        className="w-full rounded-xl border border-slate-250 bg-slate-50/50 px-4 py-2.5 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white cursor-pointer"
-                      >
-                        <option value="">Select Category</option>
-                        <option value="Water">Water Supply</option>
-                        <option value="Electricity">Electricity</option>
-                        <option value="Road">Road Condition</option>
-                        <option value="Sanitation">Sanitation</option>
-                        <option value="Waste">Waste & Garbage</option>
-                        <option value="Pothole">Potholes</option>
-                        <option value="Streetlight">Streetlights</option>
-                        <option value="Other">Other</option>
-                      </select>
+                        onChange={(val) => setNewIssue({ ...newIssue, issueType: val })}
+                        options={[
+                          { value: "Water", label: "Water Supply" },
+                          { value: "Electricity", label: "Electricity" },
+                          { value: "Road", label: "Road Condition" },
+                          { value: "Sanitation", label: "Sanitation" },
+                          { value: "Waste", label: "Waste & Garbage" },
+                          { value: "Pothole", label: "Potholes" },
+                          { value: "Streetlight", label: "Streetlights" },
+                          { value: "Other", label: "Other" },
+                        ]}
+                        placeholder="Select Category"
+                        required
+                      />
                     </div>
                   </div>
 
@@ -2949,6 +3009,14 @@ export default function App() {
                       <span className="text-slate-400 block mb-0.5">LOCATION</span>
                       <span className="text-slate-800 font-bold">{activeIssue.address || "N/A"}</span>
                     </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">CORROBORATORS</span>
+                      <span className="text-violet-600 font-bold">👥 {activeIssue.confirmations || 0}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">STILL HAPPENING CONFIRMS</span>
+                      <span className="text-emerald-600 font-bold">✓ {activeIssue.stillHappeningCount || 0} today</span>
+                    </div>
                   </div>
 
                   {/* Description */}
@@ -3060,17 +3128,19 @@ export default function App() {
                       </h4>
 
                       <form onSubmit={handleStatusUpdate} className="space-y-3">
-                        <div className="flex flex-col gap-3 sm:flex-row">
-                          <select
+                        <div className="flex flex-col gap-3 sm:flex-row items-stretch sm:items-center">
+                          <CustomDropdown
                             value={resolverStatus}
-                            onChange={(e) => setResolverStatus(e.target.value)}
-                            className="rounded-xl border border-slate-250 bg-slate-50/50 px-3 py-2 text-xs font-bold text-slate-700 outline-none cursor-pointer"
-                          >
-                            <option value="Reported">Mark Reported</option>
-                            <option value="Verified">Mark Verified</option>
-                            <option value="In Progress">Mark In Progress</option>
-                            <option value="Resolved">Mark Resolved</option>
-                          </select>
+                            onChange={setResolverStatus}
+                            options={[
+                              { value: "Reported", label: "Mark Reported" },
+                              { value: "Verified", label: "Mark Verified" },
+                              { value: "In Progress", label: "Mark In Progress" },
+                              { value: "Resolved", label: "Mark Resolved" },
+                            ]}
+                            className="w-full sm:w-48 shrink-0"
+                            size="compact"
+                          />
 
                           <input
                             type="text"

@@ -15,12 +15,14 @@ import {
   X,
   Plus,
   Upload,
-  Shield
+  Shield,
+  Filter
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, Issue } from "../types";
 import LeaderboardView from "./LeaderboardView";
 import MapView from "./MapView";
+import CustomDropdown from "./CustomDropdown";
 
 function getInitials(name?: string | null): string {
   if (!name) return "?";
@@ -54,6 +56,8 @@ export default function ResolverDashboardView({
 }: ResolverDashboardViewProps) {
   const [activeTab, setActiveTab] = useState<"dashboard" | "map" | "leaderboard">("dashboard");
   const [resolverFeedTab, setResolverFeedTab] = useState<"open" | "resolved">("open");
+  const [categoryFilter, setCategoryFilter] = useState<string>("All");
+  const [priorityFilter, setPriorityFilter] = useState<string>("All");
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
   const [showMoreDetails, setShowMoreDetails] = useState<boolean>(false);
   const [showMobileProfileDrawer, setShowMobileProfileDrawer] = useState<boolean>(false);
@@ -72,20 +76,33 @@ export default function ResolverDashboardView({
   // Comment states
   const [commentText, setCommentText] = useState<string>("");
 
-  // Filtered issues based on open / resolved toggle
+  // Filtered issues based on open / resolved toggle, category, and priority
   const filteredIssues = issues.filter((iss) => {
+    // Open/Resolved Tab Filter
     if (resolverFeedTab === "open") {
-      return iss.status !== "Resolved";
+      if (iss.status === "Resolved") return false;
     } else {
-      return iss.status === "Resolved";
+      if (iss.status !== "Resolved") return false;
     }
+
+    // Category Filter
+    if (categoryFilter !== "All") {
+      if (iss.issueType !== categoryFilter) return false;
+    }
+
+    // Priority Filter
+    if (priorityFilter !== "All") {
+      if (iss.priority !== priorityFilter) return false;
+    }
+
+    return true;
   }).sort((a, b) => {
     const aTime = new Date(a.lastActivityAt || a.updatedAt || a.createdAt).getTime();
     const bTime = new Date(b.lastActivityAt || b.updatedAt || b.createdAt).getTime();
     return bTime - aTime;
   });
 
-  // Automatically select the first issue as active when feed tab or issues change
+  // Automatically select the first issue as active when feed tab, filters, or issues change
   useEffect(() => {
     if (filteredIssues.length > 0) {
       // Keep the current active issue if it is still in the list, otherwise select first
@@ -102,7 +119,7 @@ export default function ResolverDashboardView({
     } else {
       setActiveIssue(null);
     }
-  }, [resolverFeedTab, issues]);
+  }, [resolverFeedTab, issues, categoryFilter, priorityFilter]);
 
   const handleCommentSubmitLocal = async (e: FormEvent) => {
     e.preventDefault();
@@ -454,9 +471,42 @@ export default function ResolverDashboardView({
                   </div>
                 </div>
 
+                {/* Category and Priority Filters */}
+                <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-slate-100">
+                  <CustomDropdown
+                    value={categoryFilter}
+                    onChange={setCategoryFilter}
+                    options={[
+                      { value: "All", label: "All Categories" },
+                      { value: "Water", label: "Water Supply" },
+                      { value: "Electricity", label: "Electricity" },
+                      { value: "Road", label: "Road Condition" },
+                      { value: "Sanitation", label: "Sanitation" },
+                      { value: "Pothole", label: "Potholes" },
+                      { value: "Streetlight", label: "Streetlights" },
+                      { value: "Other", label: "Other" },
+                    ]}
+                    size="compact"
+                    leftIcon={<Filter size={13} />}
+                  />
+
+                  <CustomDropdown
+                    value={priorityFilter}
+                    onChange={setPriorityFilter}
+                    options={[
+                      { value: "All", label: "All Priority" },
+                      { value: "High", label: "High" },
+                      { value: "Medium", label: "Medium" },
+                      { value: "Low", label: "Low" },
+                    ]}
+                    size="compact"
+                    leftIcon={<AlertTriangle size={13} />}
+                  />
+                </div>
+
                 {/* Horizontal Scrolling Issue List */}
                 {filteredIssues.length > 0 ? (
-                  <div className="flex gap-3 overflow-x-auto pb-2 mt-5 pt-5 border-t border-slate-100">
+                  <div className="flex gap-3 overflow-x-auto pb-2 mt-4 pt-4 border-t border-slate-100">
                     {filteredIssues.map((iss) => {
                       const isActive = activeIssue?.id === iss.id;
                       return (
@@ -469,7 +519,7 @@ export default function ResolverDashboardView({
                               : "bg-white border-slate-200 hover:border-slate-300"
                           }`}
                         >
-                          <div className="flex justify-between items-start gap-2 mb-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                             <span className="rounded-md bg-slate-50 border border-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 uppercase tracking-wide truncate max-w-[100px]">
                               {iss.issueType}
                             </span>
@@ -480,6 +530,11 @@ export default function ResolverDashboardView({
                             }`}>
                               {iss.status}
                             </span>
+                            {(iss.confirmations || 0) > 0 && (
+                              <span className="rounded-md bg-violet-50 border border-violet-100 px-1.5 py-0.5 text-[8px] font-extrabold text-violet-600 uppercase tracking-wide shrink-0">
+                                Corroborated ({iss.confirmations})
+                              </span>
+                            )}
                           </div>
                           <h4 className="font-display font-extrabold text-xs text-slate-900 truncate">
                             {iss.title}
@@ -670,23 +725,17 @@ export default function ResolverDashboardView({
                             <label className="block text-[9px] font-extrabold text-slate-400 uppercase tracking-widest">
                               Target Status
                             </label>
-                            <div className="relative">
-                              <select
-                                value={resolverStatus}
-                                onChange={(e) => setResolverStatus(e.target.value)}
-                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 outline-none cursor-pointer appearance-none shadow-xs focus:border-blue-500"
-                              >
-                                <option value="Reported">Reported</option>
-                                <option value="Verified">Verified</option>
-                                <option value="In Progress">In Progress</option>
-                                <option value="Resolved">Resolved</option>
-                              </select>
-                              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
-                                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                  <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
-                                </svg>
-                              </div>
-                            </div>
+                            <CustomDropdown
+                              value={resolverStatus}
+                              onChange={setResolverStatus}
+                              options={[
+                                { value: "Reported", label: "Reported" },
+                                { value: "Verified", label: "Verified" },
+                                { value: "In Progress", label: "In Progress" },
+                                { value: "Resolved", label: "Resolved" },
+                              ]}
+                              size="compact"
+                            />
                           </div>
                           
                           {/* Interactive Drag & Drop File Upload Proof Section */}

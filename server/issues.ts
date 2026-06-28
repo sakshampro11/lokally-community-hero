@@ -3,6 +3,7 @@ import { collection, doc, getDoc, getDocs, addDoc, updateDoc, setDoc, query, ord
 import { db, uploadFileToFirebaseStorage } from "./firebase";
 import { authenticateToken, AuthenticatedRequest } from "./middleware";
 import { upload } from "./upload";
+import { globalCache } from "./cache";
 import { GoogleGenAI, Type } from "@google/genai";
 import * as fs from "fs";
 import * as path from "path";
@@ -631,6 +632,8 @@ router.post("/", upload.array("media", 5), async (req: any, res: Response) => {
       reporterId: reporterId || null,
       confirmations: 0,
       confirmedBy: [],
+      stillHappeningCount: 0,
+      stillHappeningBy: [],
       commentsList: [],
       comments: 0,
       upvotes: 0,
@@ -649,6 +652,8 @@ router.post("/", upload.array("media", 5), async (req: any, res: Response) => {
       });
     }
 
+    globalCache.invalidateAll();
+
     return res.status(201).json({
       message: "Issue reported successfully!",
       issue: { id: docRef.id, ...issueData },
@@ -659,12 +664,136 @@ router.post("/", upload.array("media", 5), async (req: any, res: Response) => {
   }
 });
 
+// GET /api/issues/analyze-placeholders - Analyze issues in DB for placeholder/gibberish titles
+router.get("/analyze-placeholders", async (req: any, res: Response) => {
+  try {
+    const q = query(collection(db, "issues"));
+    const snapshot = await getDocs(q);
+    const allIssues = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() as any }));
+
+    const isImproperTitle = (title: string): boolean => {
+      const t = title.trim().toLowerCase();
+      if (!t) return true;
+
+      const exactPlaceholders = [
+        "test", "testing", "check 26 3pm", "check 26 june 3 pm", "efaf", "fz", "asdf", "affa", "temp", "dummy", "bla", "blah", "yashu"
+      ];
+      if (exactPlaceholders.includes(t)) return true;
+
+      if (t.startsWith("test ") || t.startsWith("check ") || t.match(/^test\d+$/)) return true;
+
+      if (t.length <= 4) {
+        const genuineShort = ["leak", "fire", "hole", "dust", "gas", "smog", "odor", "tree", "wire", "road", "park", "trap", "sign", "dirt", "pipe", "lamp", "well", "main", "pothole"];
+        if (!genuineShort.includes(t)) {
+          if (!/[aeiouy]/.test(t)) return true; // no vowels
+          if (["efaf", "fz", "asdf", "affa"].some(p => t.includes(p))) return true;
+        }
+      }
+
+      if (/^([a-z])\1{3,}$/.test(t)) return true;
+      if (/^[bcdfghjklmnpqrstvwxyz]{4,}$/.test(t)) return true;
+
+      return false;
+    };
+
+    const improper: any[] = [];
+    const genuine: any[] = [];
+
+    allIssues.forEach((issue) => {
+      if (isImproperTitle(issue.title || "")) {
+        improper.push({ id: issue.id, title: issue.title, description: issue.description });
+      } else {
+        genuine.push({ id: issue.id, title: issue.title, description: issue.description });
+      }
+    });
+
+    return res.json({
+      totalInDB: allIssues.length,
+      improperCount: improper.length,
+      genuineCount: genuine.length,
+      improperIssues: improper,
+      genuineIssues: genuine
+    });
+  } catch (error: any) {
+    console.error("Error analyzing placeholders:", error);
+    return res.status(500).json({ message: "Error analyzing placeholders", error: error.message });
+  }
+});
+
+// POST /api/issues/cleanup-placeholders - Delete identified placeholder/gibberish issues
+router.post("/cleanup-placeholders", async (req: any, res: Response) => {
+  try {
+    const q = query(collection(db, "issues"));
+    const snapshot = await getDocs(q);
+    const allIssues = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() as any }));
+
+    const isImproperTitle = (title: string): boolean => {
+      const t = title.trim().toLowerCase();
+      if (!t) return true;
+
+      const exactPlaceholders = [
+        "test", "testing", "check 26 3pm", "check 26 june 3 pm", "efaf", "fz", "asdf", "affa", "temp", "dummy", "bla", "blah", "yashu"
+      ];
+      if (exactPlaceholders.includes(t)) return true;
+
+      if (t.startsWith("test ") || t.startsWith("check ") || t.match(/^test\d+$/)) return true;
+
+      if (t.length <= 4) {
+        const genuineShort = ["leak", "fire", "hole", "dust", "gas", "smog", "odor", "tree", "wire", "road", "park", "trap", "sign", "dirt", "pipe", "lamp", "well", "main", "pothole"];
+        if (!genuineShort.includes(t)) {
+          if (!/[aeiouy]/.test(t)) return true;
+          if (["efaf", "fz", "asdf", "affa"].some(p => t.includes(p))) return true;
+        }
+      }
+
+      if (/^([a-z])\1{3,}$/.test(t)) return true;
+      if (/^[bcdfghjklmnpqrstvwxyz]{4,}$/.test(t)) return true;
+
+      return false;
+    };
+
+    const deleted: any[] = [];
+    const deletePromises: Promise<void>[] = [];
+
+    allIssues.forEach((issue) => {
+      if (isImproperTitle(issue.title || "")) {
+        deleted.push({ id: issue.id, title: issue.title });
+        deletePromises.push(deleteDoc(doc(db, "issues", issue.id)));
+      }
+    });
+
+    if (deletePromises.length > 0) {
+      await Promise.all(deletePromises);
+      console.log(`[Cleanup] Deleted ${deleted.length} placeholder issues.`);
+      globalCache.invalidateAll();
+    }
+
+    return res.json({
+      message: `Successfully cleaned up ${deleted.length} placeholder issues.`,
+      deletedCount: deleted.length,
+      deletedIssues: deleted
+    });
+  } catch (error: any) {
+    console.error("Error executing cleanup:", error);
+    return res.status(500).json({ message: "Error executing cleanup", error: error.message });
+  }
+});
+
 // 2. GET /api/issues - List all issues (ordered by creation date desc)
 router.get("/", async (req: any, res: Response) => {
   try {
+    const cacheKey = "issues_list";
+    const cachedData = globalCache.get<any[]>(cacheKey);
+    if (cachedData) {
+      console.log("[Cache] Serving issues list from in-memory cache.");
+      return res.json(cachedData);
+    }
+
     const q = query(collection(db, "issues"), orderBy("createdAt", "desc"));
     const snapshot = await getDocs(q);
     const issues = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    
+    globalCache.set(cacheKey, issues);
     return res.json(issues);
   } catch (error: any) {
     console.error("Error fetching issues:", error);
@@ -680,6 +809,7 @@ router.delete("/all", async (req: any, res: Response) => {
     const deletePromises = snapshot.docs.map((docSnap) => deleteDoc(doc(db, "issues", docSnap.id)));
     await Promise.all(deletePromises);
     console.log(`[Clear All Issues] Successfully deleted ${snapshot.docs.length} issues.`);
+    globalCache.invalidateAll();
     
     // Also delete cached insights so they regenerate with the empty slate
     try {
@@ -940,6 +1070,7 @@ router.post("/:id/confirm", authenticateToken as any, async (req: AuthenticatedR
     }
 
     await updateDoc(docRef, updates);
+    globalCache.invalidateAll();
 
     // Award citizen points for verifying
     await awardCitizenPointsAndBadges(userId, {
@@ -952,6 +1083,61 @@ router.post("/:id/confirm", authenticateToken as any, async (req: AuthenticatedR
   } catch (error: any) {
     console.error("Error confirming issue:", error);
     return res.status(500).json({ message: "Error confirming issue", error: error.message });
+  }
+});
+
+// POST /api/issues/:id/still-happening - stand-alone freshness confirmation
+router.post("/:id/still-happening", authenticateToken as any, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
+    const docRef = doc(db, "issues", req.params.id);
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+      return res.status(404).json({ message: "Issue not found" });
+    }
+
+    const data = docSnap.data() as any;
+
+    if (data.reporterId === userId) {
+      return res.status(400).json({ message: "You cannot confirm freshness of your own report." });
+    }
+
+    const stillHappeningBy = data.stillHappeningBy || [];
+    const lastConfirm = stillHappeningBy.find((entry: any) => entry.userId === userId);
+
+    if (lastConfirm) {
+      const lastTime = new Date(lastConfirm.timestamp).getTime();
+      const now = new Date().getTime();
+      const hoursSince = (now - lastTime) / (1000 * 60 * 60);
+      if (hoursSince < 24) {
+        return res.status(400).json({ message: "You have already confirmed this issue in the last 24 hours." });
+      }
+    }
+
+    const otherEntries = stillHappeningBy.filter((entry: any) => entry.userId !== userId);
+    const newEntry = { userId, timestamp: new Date().toISOString() };
+    const nextStillHappeningBy = [...otherEntries, newEntry];
+    const nextStillHappeningCount = (data.stillHappeningCount || 0) + 1;
+
+    const updates = {
+      stillHappeningCount: nextStillHappeningCount,
+      stillHappeningBy: nextStillHappeningBy,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await updateDoc(docRef, updates);
+    globalCache.invalidateAll();
+
+    const updatedSnap = await getDoc(docRef);
+    return res.json({ id: updatedSnap.id, ...updatedSnap.data() });
+  } catch (error: any) {
+    console.error("Error confirming freshness of issue:", error);
+    return res.status(500).json({ message: "Error confirming freshness of issue", error: error.message });
   }
 });
 
@@ -999,6 +1185,7 @@ router.post("/:id/comments", authenticateToken as any, async (req: Authenticated
       comments: updatedComments.length,
       updatedAt: new Date().toISOString(),
     });
+    globalCache.invalidateAll();
 
     const updatedSnap = await getDoc(docRef);
     return res.json({ id: updatedSnap.id, ...updatedSnap.data() });
@@ -1069,6 +1256,7 @@ router.put("/:id/status", authenticateToken as any, upload.array("media", 5), as
     }
 
     await updateDoc(docRef, updates);
+    globalCache.invalidateAll();
 
     // If status became resolved, reward the reporter (+10 points) and award resolver milestones
     if (status === "Resolved" && data.status !== "Resolved") {

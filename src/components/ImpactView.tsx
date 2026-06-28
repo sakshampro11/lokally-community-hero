@@ -78,8 +78,34 @@ function getAreaLabel(address: string | null): string {
 }
 
 export default function ImpactView({ issues }: ImpactViewProps) {
-  const [aiInsights, setAiInsights] = useState<AIInsightsData | null>(null);
-  const [aiLoading, setAiLoading] = useState<boolean>(true);
+  const [aiInsights, setAiInsights] = useState<AIInsightsData | null>(() => {
+    try {
+      const cached = localStorage.getItem("lokally_ai_insights");
+      const cachedTime = localStorage.getItem("lokally_ai_insights_time");
+      const fiveMinutes = 5 * 60 * 1000;
+      const now = Date.now();
+      if (cached && cachedTime && (now - parseInt(cachedTime, 10)) < fiveMinutes) {
+        return JSON.parse(cached);
+      }
+    } catch (e) {
+      // ignore
+    }
+    return null;
+  });
+  const [aiLoading, setAiLoading] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem("lokally_ai_insights");
+      const cachedTime = localStorage.getItem("lokally_ai_insights_time");
+      const fiveMinutes = 5 * 60 * 1000;
+      const now = Date.now();
+      if (cached && cachedTime && (now - parseInt(cachedTime, 10)) < fiveMinutes) {
+        return false;
+      }
+    } catch (e) {
+      // ignore
+    }
+    return true;
+  });
   const [aiError, setAiError] = useState<string | null>(null);
 
   // 1. Core Calculations
@@ -208,12 +234,29 @@ export default function ImpactView({ issues }: ImpactViewProps) {
   // 5. Fetch AI Insights
   useEffect(() => {
     async function fetchInsights() {
+      const cached = localStorage.getItem("lokally_ai_insights");
+      const cachedTime = localStorage.getItem("lokally_ai_insights_time");
+      const fiveMinutes = 5 * 60 * 1000;
+      const now = Date.now();
+
+      if (cached && cachedTime && (now - parseInt(cachedTime, 10)) < fiveMinutes) {
+        try {
+          setAiInsights(JSON.parse(cached));
+          setAiLoading(false);
+          return;
+        } catch (e) {
+          // ignore parsing error, fetch fresh
+        }
+      }
+
       try {
         setAiLoading(true);
         const res = await fetch("/api/issues/ai-insights");
         if (res.ok) {
           const data = await res.json();
           setAiInsights(data);
+          localStorage.setItem("lokally_ai_insights", JSON.stringify(data));
+          localStorage.setItem("lokally_ai_insights_time", now.toString());
         } else {
           throw new Error("Failed to load insights");
         }
@@ -224,7 +267,7 @@ export default function ImpactView({ issues }: ImpactViewProps) {
       }
     }
     fetchInsights();
-  }, [issues]);
+  }, []);
 
   const reportsThisMonth = issues.filter((i) => {
     const d = new Date(i.createdAt);
@@ -363,13 +406,22 @@ export default function ImpactView({ issues }: ImpactViewProps) {
         </div>
 
         {aiLoading ? (
-          <div className="space-y-3">
-            <div className="h-4 bg-slate-50 rounded-full animate-pulse w-3/4" />
-            <div className="h-3 bg-slate-50 rounded-full animate-pulse w-5/6" />
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-              <div className="h-20 bg-slate-50/50 rounded-2xl border border-slate-100 animate-pulse" />
-              <div className="h-20 bg-slate-50/50 rounded-2xl border border-slate-100 animate-pulse" />
-              <div className="h-20 bg-slate-50/50 rounded-2xl border border-slate-100 animate-pulse" />
+          <div className="flex flex-col items-center justify-center py-12 px-4 space-y-4 text-center">
+            <div className="relative flex items-center justify-center">
+              <div className="h-12 w-12 animate-spin rounded-full border-4 border-violet-100 border-t-violet-600"></div>
+              <Sparkles size={18} className="absolute text-violet-500 animate-pulse" />
+            </div>
+            <div className="space-y-2">
+              <p className="font-display text-sm font-bold text-slate-800 animate-pulse">
+                AI Insights loading...
+              </p>
+              <p className="text-xs text-slate-400 font-semibold max-w-md">
+                Gemini is analyzing the latest reports to detect recurring neighborhood patterns. This may take up to 30 seconds.
+              </p>
+            </div>
+            <div className="w-full max-w-md space-y-2.5 pt-4">
+              <div className="h-3 bg-slate-100 rounded-full animate-pulse w-3/4 mx-auto" />
+              <div className="h-3 bg-slate-100 rounded-full animate-pulse w-5/6 mx-auto" />
             </div>
           </div>
         ) : aiError ? (

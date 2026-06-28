@@ -55,6 +55,8 @@ export interface Issue {
   reporterId: string | null;
   confirmations: number;
   confirmedBy: string[];
+  stillHappeningCount?: number;
+  stillHappeningBy?: { userId: string; timestamp: string }[];
   commentsList: Comment[];
   comments: number;
   upvotes: number;
